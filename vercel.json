@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm --prefix figmadoc install",
+  "installCommand": "npm --prefix figmadoc install --legacy-peer-deps",
   "buildCommand": "npm --prefix figmadoc run build",
   "outputDirectory": "figmadoc/dist",
   "rewrites": [
