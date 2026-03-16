@@ -198,6 +198,7 @@ interface AppStore {
   splitRatio: number;
   panelMode: 'split' | 'docs-only' | 'whiteboard-only';
   docsNavigatorCollapsed: boolean;
+  docsEditorChromeCollapsed: boolean;
   activeSurface: 'document' | 'whiteboard';
 
   selectedIds: string[];
@@ -249,6 +250,8 @@ interface AppStore {
   setPanelMode: (mode: 'split' | 'docs-only' | 'whiteboard-only') => void;
   setDocsNavigatorCollapsed: (collapsed: boolean) => void;
   toggleDocsNavigatorCollapsed: () => void;
+  setDocsEditorChromeCollapsed: (collapsed: boolean) => void;
+  toggleDocsEditorChromeCollapsed: () => void;
   setActiveSurface: (surface: 'document' | 'whiteboard') => void;
 }
 
@@ -266,6 +269,7 @@ export const useStore = create<AppStore>()(
       splitRatio: 0.28,
       panelMode: 'split',
       docsNavigatorCollapsed: false,
+      docsEditorChromeCollapsed: false,
       activeSurface: 'whiteboard',
 
       selectedIds: [],
@@ -600,12 +604,15 @@ export const useStore = create<AppStore>()(
       setDocsNavigatorCollapsed: (docsNavigatorCollapsed) => set({ docsNavigatorCollapsed }),
       toggleDocsNavigatorCollapsed: () =>
         set((state) => ({ docsNavigatorCollapsed: !state.docsNavigatorCollapsed })),
+      setDocsEditorChromeCollapsed: (docsEditorChromeCollapsed) => set({ docsEditorChromeCollapsed }),
+      toggleDocsEditorChromeCollapsed: () =>
+        set((state) => ({ docsEditorChromeCollapsed: !state.docsEditorChromeCollapsed })),
       setActiveSurface: (activeSurface) => set({ activeSurface }),
     }),
     {
       name: APP_STORAGE_KEY,
       storage: createJSONStorage(() => fallbackStorage),
-      version: 5,
+      version: 6,
       migrate: (persistedState) => {
         const state = persistedState as Partial<AppStore> | undefined;
         const pages = state?.pages ? normalizePages(state.pages) : makeInitialPages();
@@ -621,6 +628,7 @@ export const useStore = create<AppStore>()(
           splitRatio: state?.splitRatio ?? 0.28,
           panelMode: state?.panelMode ?? 'split',
           docsNavigatorCollapsed: state?.docsNavigatorCollapsed ?? false,
+          docsEditorChromeCollapsed: state?.docsEditorChromeCollapsed ?? false,
           viewState: state?.viewState ?? makeInitialViewState(),
         };
       },
@@ -636,6 +644,7 @@ export const useStore = create<AppStore>()(
         splitRatio: state.splitRatio,
         panelMode: state.panelMode,
         docsNavigatorCollapsed: state.docsNavigatorCollapsed,
+        docsEditorChromeCollapsed: state.docsEditorChromeCollapsed,
         viewState: state.viewState,
       }),
     }

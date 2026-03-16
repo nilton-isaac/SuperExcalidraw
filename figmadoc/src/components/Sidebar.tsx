@@ -33,7 +33,9 @@ export function Sidebar() {
     updatePage,
     deletePage,
     docsNavigatorCollapsed,
+    docsEditorChromeCollapsed,
     toggleDocsNavigatorCollapsed,
+    toggleDocsEditorChromeCollapsed,
     setActiveSurface,
   } = useStore();
 
@@ -82,6 +84,11 @@ export function Sidebar() {
 
         <div style={{ display: 'flex', gap: 4 }}>
           <SmallBtn icon="add" title="New page" onClick={() => addPage()} />
+          <SmallBtn
+            icon={docsEditorChromeCollapsed ? 'fullscreen' : 'fullscreen_exit'}
+            title={docsEditorChromeCollapsed ? 'Show editor controls' : 'Hide editor controls'}
+            onClick={toggleDocsEditorChromeCollapsed}
+          />
           <SmallBtn
             icon={docsNavigatorCollapsed ? 'keyboard_arrow_down' : 'keyboard_arrow_up'}
             title={docsNavigatorCollapsed ? 'Expand pages' : 'Collapse pages'}
@@ -157,6 +164,8 @@ export function Sidebar() {
           <PageEditor
             key={activePage.id}
             page={activePage}
+            chromeCollapsed={docsEditorChromeCollapsed}
+            onToggleChrome={toggleDocsEditorChromeCollapsed}
             onTitleChange={(title) => updatePage(activePage.id, { title })}
             onUpdate={(content) => updatePage(activePage.id, { content })}
           />
@@ -276,10 +285,14 @@ function NavNode({
 
 function PageEditor({
   page,
+  chromeCollapsed,
+  onToggleChrome,
   onTitleChange,
   onUpdate,
 }: {
   page: DocPage;
+  chromeCollapsed: boolean;
+  onToggleChrome: () => void;
   onTitleChange: (title: string) => void;
   onUpdate: (content: string) => void;
 }) {
@@ -304,63 +317,151 @@ function PageEditor({
 
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      {!chromeCollapsed && (
+        <>
+          <div
+            style={{
+              padding: '16px 18px 12px',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'var(--bg-primary)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                Page Title
+              </span>
+
+              <button
+                onClick={onToggleChrome}
+                style={{
+                  height: 24,
+                  padding: '0 8px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-secondary)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Minimize
+              </button>
+            </div>
+            <input
+              value={page.title}
+              onChange={(event) => onTitleChange(event.target.value)}
+              onBlur={(event) => {
+                if (!event.target.value.trim()) {
+                  onTitleChange('Untitled');
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur();
+                }
+              }}
+              placeholder="Untitled"
+              style={{
+                width: '100%',
+                height: 40,
+                borderRadius: 10,
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                padding: '0 12px',
+                fontSize: 15,
+                fontWeight: 700,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          {editor && <FormatBar editor={editor} />}
+        </>
+      )}
+
       <div
         style={{
-          padding: '16px 18px 12px',
-          borderBottom: '1px solid var(--border-color)',
-          background: 'var(--bg-primary)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          flexShrink: 0,
+          flex: 1,
+          overflowY: 'auto',
+          padding: chromeCollapsed ? '12px 20px 28px' : '20px 20px 40px',
+          minWidth: 0,
         }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--text-muted)',
-          }}
-        >
-          Page Title
-        </span>
-        <input
-          value={page.title}
-          onChange={(event) => onTitleChange(event.target.value)}
-          onBlur={(event) => {
-            if (!event.target.value.trim()) {
-              onTitleChange('Untitled');
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.currentTarget.blur();
-            }
-          }}
-          placeholder="Untitled"
-          style={{
-            width: '100%',
-            height: 40,
-            borderRadius: 10,
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            padding: '0 12px',
-            fontSize: 15,
-            fontWeight: 700,
-            outline: 'none',
-          }}
-        />
-      </div>
-
-      {editor && <FormatBar editor={editor} />}
-
-      <div
-        style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 40px', minWidth: 0 }}
         onClick={() => editor?.commands.focus()}
       >
+        {chromeCollapsed && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 12,
+              padding: '8px 0 12px',
+              borderBottom: '1px solid var(--border-color)',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {page.title || 'Untitled'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Editor controls hidden</div>
+            </div>
+
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleChrome();
+              }}
+              style={{
+                height: 28,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              Show controls
+            </button>
+          </div>
+        )}
+
         <EditorContent editor={editor} />
       </div>
     </div>
