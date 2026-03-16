@@ -90,86 +90,52 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div
-        style={{
-          padding: '10px 12px',
-          flexShrink: 0,
-          borderBottom: '1px solid var(--border-color)',
-          display: 'grid',
-          gap: 8,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              Pages
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-              {totalPages} {totalPages === 1 ? 'page' : 'pages'}
-            </div>
-          </div>
-
-          <button
-            onClick={toggleDocsNavigatorCollapsed}
-            style={{
-              height: 28,
-              padding: '0 10px',
-              borderRadius: 8,
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-secondary)',
-              color: 'var(--text-primary)',
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {docsNavigatorCollapsed ? 'Expand' : 'Compact'}
-          </button>
-        </div>
-
-        {docsNavigatorCollapsed ? (
-          <button
-            onClick={toggleDocsNavigatorCollapsed}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              borderRadius: 12,
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-secondary)',
-              color: 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            <PageIcon name={activePage?.icon ?? 'description'} />
-            <div style={{ minWidth: 0, flex: 1 }}>
+      {!docsNavigatorCollapsed && (
+        <div
+          style={{
+            padding: '10px 12px',
+            flexShrink: 0,
+            borderBottom: '1px solid var(--border-color)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 700,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
                 }}
               >
-                {activePage?.title ?? 'No active page'}
+                Pages
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Open pages list</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                {totalPages} {totalPages === 1 ? 'page' : 'pages'}
+              </div>
             </div>
-            <Icon name="chevron_right" size={18} />
-          </button>
-        ) : (
+
+            <button
+              onClick={toggleDocsNavigatorCollapsed}
+              style={{
+                height: 28,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Hide
+            </button>
+          </div>
+
           <div style={{ maxHeight: 172, overflowY: 'auto', paddingRight: 4 }}>
             {pages.map((page) => (
               <NavNode
@@ -183,8 +149,8 @@ export function Sidebar() {
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activePage ? (
