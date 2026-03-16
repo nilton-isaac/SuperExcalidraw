@@ -64,7 +64,7 @@ export function Header() {
 
   const commitTitle = () => {
     setTitleEditing(false);
-    const nextTitle = titleDraft.trim() || 'Code Canvas';
+    const nextTitle = titleDraft.trim() || 'Sketch Docs';
     setDocumentTitle(nextTitle);
   };
 
@@ -232,7 +232,7 @@ export function Header() {
             );
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = 'code-canvas-export.json';
+            link.download = 'sketch-docs-export.json';
             link.click();
             URL.revokeObjectURL(link.href);
           }}

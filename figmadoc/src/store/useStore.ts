@@ -9,10 +9,10 @@ import {
 } from '../lib/whiteboardData';
 
 const MAX_HISTORY = 60;
-const APP_STORAGE_KEY = 'code-canvas-v1';
-const LEGACY_STORAGE_KEY = 'figmadoc-v1';
-const APP_NAME = 'Code Canvas';
-const LEGACY_APP_NAME = 'FigmaDoc';
+const APP_STORAGE_KEY = 'sketch-docs-v1';
+const LEGACY_STORAGE_KEYS = ['code-canvas-v1', 'figmadoc-v1'];
+const APP_NAME = 'Sketch Docs';
+const LEGACY_APP_NAMES = ['Code Canvas', 'FigmaDoc'];
 
 const PAGE_ICON_MAP: Record<string, string> = {
   '📄': 'description',
@@ -22,21 +22,28 @@ const PAGE_ICON_MAP: Record<string, string> = {
 const fallbackStorage: StateStorage = {
   getItem: (name) => {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem(name)
-      ?? (name === APP_STORAGE_KEY ? localStorage.getItem(LEGACY_STORAGE_KEY) : null);
+    if (name !== APP_STORAGE_KEY) {
+      return localStorage.getItem(name);
+    }
+
+    return (
+      localStorage.getItem(name)
+      ?? LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find((value) => value != null)
+      ?? null
+    );
   },
   setItem: (name, value) => {
     if (typeof window === 'undefined') return;
     localStorage.setItem(name, value);
     if (name === APP_STORAGE_KEY) {
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     }
   },
   removeItem: (name) => {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(name);
     if (name === APP_STORAGE_KEY) {
-      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     }
   },
 };
@@ -48,7 +55,7 @@ const normalizePageIcon = (icon?: string) => {
 
 const normalizeLegacyTitle = (value?: string | null) => {
   const normalized = value?.trim();
-  if (!normalized || normalized === LEGACY_APP_NAME) {
+  if (!normalized || LEGACY_APP_NAMES.includes(normalized)) {
     return APP_NAME;
   }
   return normalized;

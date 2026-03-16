@@ -1,4 +1,4 @@
-# 📐 FigmaDoc - Documentação Técnica Completa
+# 📐 Sketch Docs - Documentação Técnica Completa
 
 ## 🎯 Visão do Projeto
 

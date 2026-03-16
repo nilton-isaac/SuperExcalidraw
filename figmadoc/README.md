@@ -1,4 +1,4 @@
-# Code Canvas
+# Sketch Docs
 
 Whiteboard + documentation workspace built with React, TypeScript and Vite.
 
