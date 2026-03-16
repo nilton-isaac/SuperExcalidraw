@@ -18,6 +18,12 @@
   --code-bg: #000000;
   --code-fg: #ffffff;
   --canvas-bg: #ffffff;
+  --doc-canvas-bg: #f3efe8;
+  --doc-surface: #fffdf8;
+  --doc-ink: #1d1b18;
+  --doc-ink-soft: rgba(29, 27, 24, 0.78);
+  --doc-border: rgba(29, 27, 24, 0.12);
+  --doc-shadow: 0 28px 90px rgba(30, 26, 20, 0.1);
   --grid-color: rgba(0, 0, 0, 0.15);
   --backdrop: rgba(0, 0, 0, 0.6);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.1);
@@ -40,6 +46,12 @@
   --code-bg: #000000;
   --code-fg: #ffffff;
   --canvas-bg: #000000;
+  --doc-canvas-bg: #11100f;
+  --doc-surface: #1b1917;
+  --doc-ink: #f3ede4;
+  --doc-ink-soft: rgba(243, 237, 228, 0.78);
+  --doc-border: rgba(243, 237, 228, 0.12);
+  --doc-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
   --grid-color: rgba(255, 255, 255, 0.14);
   --backdrop: rgba(0, 0, 0, 0.72);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.35);
@@ -166,11 +178,36 @@ select {
   padding-left: 1.25rem;
 }
 
+.tiptap ul {
+  list-style: disc;
+}
+
+.tiptap ul ul {
+  list-style: circle;
+}
+
+.tiptap ol {
+  list-style: decimal;
+}
+
+.tiptap ol ol {
+  list-style: lower-alpha;
+}
+
 .tiptap li {
+  display: list-item;
   font-size: 0.925rem;
   line-height: 1.75;
   color: var(--text-secondary);
   margin-bottom: 0.25rem;
+}
+
+.tiptap li::marker {
+  color: currentColor;
+}
+
+.tiptap li p {
+  margin-bottom: 0.2rem;
 }
 
 .tiptap blockquote {
@@ -249,6 +286,84 @@ select {
 
 .tiptap ul[data-type="taskList"] li > div {
   flex: 1;
+}
+
+.document-sheet {
+  width: min(100%, 920px);
+  min-height: 1120px;
+  margin: 0 auto 32px;
+  padding: 56px 64px 72px;
+  background: var(--doc-surface);
+  color: var(--doc-ink);
+  border: 1px solid var(--doc-border);
+  border-radius: 28px;
+  box-shadow: var(--doc-shadow);
+}
+
+.document-sheet .tiptap {
+  min-height: 920px;
+}
+
+.document-sheet .tiptap h1,
+.document-sheet .tiptap h2,
+.document-sheet .tiptap h3,
+.document-sheet .tiptap strong,
+.document-sheet .tiptap code {
+  color: var(--doc-ink);
+}
+
+.document-sheet .tiptap p,
+.document-sheet .tiptap li,
+.document-sheet .tiptap blockquote {
+  color: var(--doc-ink-soft);
+}
+
+.document-sheet .tiptap ul,
+.document-sheet .tiptap ol {
+  padding-left: 1.4rem;
+}
+
+.document-sheet .tiptap li::marker {
+  color: var(--doc-ink-soft);
+}
+
+.document-sheet .tiptap h2 {
+  border-top-color: var(--doc-border);
+}
+
+.document-sheet .tiptap hr {
+  border-top-color: var(--doc-border);
+}
+
+.document-sheet .tiptap code {
+  background: color-mix(in srgb, var(--doc-ink) 10%, transparent);
+}
+
+.document-sheet-footer {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--doc-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--doc-ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .document-sheet {
+    min-height: auto;
+    padding: 32px 24px 40px;
+    border-radius: 20px;
+  }
+
+  .document-sheet .tiptap {
+    min-height: 70vh;
+  }
 }
 
 @keyframes spin {

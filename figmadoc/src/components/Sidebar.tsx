@@ -28,6 +28,7 @@ export function Sidebar() {
   const {
     pages,
     activePageId,
+    panelMode,
     setActivePageId,
     addPage,
     updatePage,
@@ -41,6 +42,7 @@ export function Sidebar() {
 
   const activePage = findPage(pages, activePageId);
   const totalPages = countPages(pages);
+  const docsOnly = panelMode === 'docs-only';
 
   return (
     <aside
@@ -49,8 +51,8 @@ export function Sidebar() {
         width: '100%',
         minWidth: 0,
         height: '100%',
-        background: 'var(--bg-primary)',
-        borderRight: '1px solid var(--border-color)',
+        background: docsOnly ? 'var(--doc-canvas-bg)' : 'var(--bg-primary)',
+        borderRight: panelMode === 'split' ? '1px solid var(--border-color)' : 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -63,7 +65,7 @@ export function Sidebar() {
       <div
         style={{
           padding: '12px 16px',
-          borderBottom: '1px solid var(--border-color)',
+          borderBottom: `1px solid ${docsOnly ? 'var(--doc-border)' : 'var(--border-color)'}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -74,7 +76,7 @@ export function Sidebar() {
           style={{
             fontWeight: 700,
             fontSize: 12,
-            color: 'var(--text-secondary)',
+            color: docsOnly ? 'var(--doc-ink-soft)' : 'var(--text-secondary)',
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
           }}
@@ -102,7 +104,7 @@ export function Sidebar() {
           style={{
             padding: '10px 12px',
             flexShrink: 0,
-            borderBottom: '1px solid var(--border-color)',
+            borderBottom: `1px solid ${docsOnly ? 'var(--doc-border)' : 'var(--border-color)'}`,
             display: 'grid',
             gap: 8,
           }}
@@ -113,14 +115,14 @@ export function Sidebar() {
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: 'var(--text-muted)',
+                  color: docsOnly ? 'var(--doc-ink-soft)' : 'var(--text-muted)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.08em',
                 }}
               >
                 Pages
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div style={{ fontSize: 12, color: docsOnly ? 'var(--doc-ink-soft)' : 'var(--text-secondary)' }}>
                 {totalPages} {totalPages === 1 ? 'page' : 'pages'}
               </div>
             </div>
@@ -131,9 +133,9 @@ export function Sidebar() {
                 height: 28,
                 padding: '0 10px',
                 borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
+                border: `1px solid ${docsOnly ? 'var(--doc-border)' : 'var(--border-color)'}`,
+                background: docsOnly ? 'var(--doc-surface)' : 'var(--bg-secondary)',
+                color: docsOnly ? 'var(--doc-ink)' : 'var(--text-primary)',
                 fontSize: 11,
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -164,6 +166,7 @@ export function Sidebar() {
           <PageEditor
             key={activePage.id}
             page={activePage}
+            fullDocumentMode={docsOnly}
             chromeCollapsed={docsEditorChromeCollapsed}
             onToggleChrome={toggleDocsEditorChromeCollapsed}
             onTitleChange={(title) => updatePage(activePage.id, { title })}
@@ -285,12 +288,14 @@ function NavNode({
 
 function PageEditor({
   page,
+  fullDocumentMode,
   chromeCollapsed,
   onToggleChrome,
   onTitleChange,
   onUpdate,
 }: {
   page: DocPage;
+  fullDocumentMode: boolean;
   chromeCollapsed: boolean;
   onToggleChrome: () => void;
   onTitleChange: (title: string) => void;
@@ -315,15 +320,38 @@ function PageEditor({
     },
   });
 
+  const tone = fullDocumentMode ? 'doc' : 'app';
+  const shellBackground = fullDocumentMode ? 'var(--doc-surface)' : 'var(--bg-primary)';
+  const shellBorder = fullDocumentMode ? 'var(--doc-border)' : 'var(--border-color)';
+  const shellText = fullDocumentMode ? 'var(--doc-ink)' : 'var(--text-primary)';
+  const shellTextSoft = fullDocumentMode ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
+  const shellMuted = fullDocumentMode ? 'var(--doc-ink-soft)' : 'var(--text-muted)';
+  const scrollPadding = fullDocumentMode
+    ? chromeCollapsed
+      ? '24px 24px 52px'
+      : '32px 24px 56px'
+    : chromeCollapsed
+      ? '12px 20px 28px'
+      : '20px 20px 40px';
+
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+    <div
+      style={{
+        flex: 1,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        minWidth: 0,
+        background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'transparent',
+      }}
+    >
       {!chromeCollapsed && (
         <>
           <div
             style={{
               padding: '16px 18px 12px',
-              borderBottom: '1px solid var(--border-color)',
-              background: 'var(--bg-primary)',
+              borderBottom: `1px solid ${shellBorder}`,
+              background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'var(--bg-primary)',
               display: 'flex',
               flexDirection: 'column',
               gap: 6,
@@ -344,7 +372,7 @@ function PageEditor({
                   fontWeight: 700,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
-                  color: 'var(--text-muted)',
+                  color: shellMuted,
                 }}
               >
                 Page Title
@@ -356,9 +384,9 @@ function PageEditor({
                   height: 24,
                   padding: '0 8px',
                   borderRadius: 8,
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--bg-secondary)',
-                  color: 'var(--text-secondary)',
+                  border: `1px solid ${shellBorder}`,
+                  background: shellBackground,
+                  color: shellTextSoft,
                   fontSize: 10,
                   fontWeight: 700,
                   cursor: 'pointer',
@@ -387,9 +415,9 @@ function PageEditor({
                 width: '100%',
                 height: 40,
                 borderRadius: 10,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
+                border: `1px solid ${shellBorder}`,
+                background: shellBackground,
+                color: shellText,
                 padding: '0 12px',
                 fontSize: 15,
                 fontWeight: 700,
@@ -398,7 +426,7 @@ function PageEditor({
             />
           </div>
 
-          {editor && <FormatBar editor={editor} />}
+          {editor && <FormatBar editor={editor} tone={tone} />}
         </>
       )}
 
@@ -406,8 +434,9 @@ function PageEditor({
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: chromeCollapsed ? '12px 20px 28px' : '20px 20px 40px',
+          padding: scrollPadding,
           minWidth: 0,
+          background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'transparent',
         }}
         onClick={() => editor?.commands.focus()}
       >
@@ -420,7 +449,7 @@ function PageEditor({
               gap: 12,
               marginBottom: 12,
               padding: '8px 0 12px',
-              borderBottom: '1px solid var(--border-color)',
+              borderBottom: `1px solid ${shellBorder}`,
             }}
           >
             <div style={{ minWidth: 0 }}>
@@ -428,7 +457,7 @@ function PageEditor({
                 style={{
                   fontSize: 13,
                   fontWeight: 700,
-                  color: 'var(--text-primary)',
+                  color: shellText,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -436,7 +465,9 @@ function PageEditor({
               >
                 {page.title || 'Untitled'}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Editor controls hidden</div>
+              <div style={{ fontSize: 11, color: shellMuted }}>
+                {fullDocumentMode ? 'Document controls hidden' : 'Editor controls hidden'}
+              </div>
             </div>
 
             <button
@@ -448,9 +479,9 @@ function PageEditor({
                 height: 28,
                 padding: '0 10px',
                 borderRadius: 8,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
+                border: `1px solid ${shellBorder}`,
+                background: shellBackground,
+                color: shellText,
                 fontSize: 11,
                 fontWeight: 700,
                 cursor: 'pointer',
@@ -462,15 +493,51 @@ function PageEditor({
           </div>
         )}
 
-        <EditorContent editor={editor} />
+        {fullDocumentMode ? (
+          <div style={{ maxWidth: 980, margin: '0 auto' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+                margin: '0 auto 12px',
+                padding: '0 12px',
+                color: shellMuted,
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
+            >
+              <span>{page.title || 'Untitled'}</span>
+              <span>Page 1</span>
+            </div>
+
+            <div className="document-sheet">
+              <EditorContent editor={editor} />
+
+              <div className="document-sheet-footer">
+                <span>{page.title || 'Untitled'}</span>
+                <span>Page 1</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <EditorContent editor={editor} />
+        )}
       </div>
     </div>
   );
 }
 
-function FormatBar({ editor }: { editor: Editor }) {
+function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
   const color = editor.getAttributes('textStyle').color ?? '#000000';
   const fontFamily = editor.getAttributes('textStyle').fontFamily ?? 'Space Grotesk';
+  const inputSurface = tone === 'doc' ? 'var(--doc-surface)' : 'var(--bg-primary)';
+  const border = tone === 'doc' ? 'var(--doc-border)' : 'var(--border-color)';
+  const text = tone === 'doc' ? 'var(--doc-ink)' : 'var(--text-primary)';
+  const textSoft = tone === 'doc' ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
 
   const buttons: Array<{
     key: string;
@@ -580,8 +647,8 @@ function FormatBar({ editor }: { editor: Editor }) {
         flexWrap: 'wrap',
         gap: 6,
         padding: '10px 12px',
-        borderBottom: '1px solid var(--border-color)',
-        background: 'var(--bg-secondary)',
+        borderBottom: `1px solid ${border}`,
+        background: tone === 'doc' ? 'var(--doc-canvas-bg)' : 'var(--bg-secondary)',
         flexShrink: 0,
         alignItems: 'center',
       }}
@@ -595,12 +662,13 @@ function FormatBar({ editor }: { editor: Editor }) {
             event.preventDefault();
             button.run();
           }}
+          tone={tone}
         >
           {button.icon ? <Icon name={button.icon} size={16} /> : button.label}
         </FormatButton>
       ))}
 
-      <ToolbarDivider />
+      <ToolbarDivider tone={tone} />
 
       <select
         value={fontFamily}
@@ -612,7 +680,7 @@ function FormatBar({ editor }: { editor: Editor }) {
           }
           editor.chain().focus().setFontFamily(value).run();
         }}
-        style={controlStyle}
+        style={getControlStyle(tone)}
       >
         <option value="default">Default font</option>
         {FONT_OPTIONS.map((option) => (
@@ -628,9 +696,10 @@ function FormatBar({ editor }: { editor: Editor }) {
           alignItems: 'center',
           gap: 4,
           padding: '4px 6px',
-          border: '1px solid var(--border-color)',
+          border: `1px solid ${border}`,
           borderRadius: 8,
-          background: 'var(--bg-primary)',
+          background: inputSurface,
+          color: textSoft,
         }}
       >
         <Icon name="format_color_text" size={16} />
@@ -663,7 +732,7 @@ function FormatBar({ editor }: { editor: Editor }) {
               width: 18,
               height: 18,
               borderRadius: '50%',
-              border: color === preset ? '2px solid var(--text-primary)' : '1px solid var(--border-color)',
+              border: color === preset ? `2px solid ${text}` : `1px solid ${border}`,
               background: preset,
               cursor: 'pointer',
             }}
@@ -671,7 +740,7 @@ function FormatBar({ editor }: { editor: Editor }) {
         ))}
       </div>
 
-      <ToolbarDivider />
+      <ToolbarDivider tone={tone} />
 
       <div style={{ display: 'flex', gap: 4 }}>
         {[
@@ -687,6 +756,7 @@ function FormatBar({ editor }: { editor: Editor }) {
               event.preventDefault();
               editor.chain().focus().setTextAlign(option.align).run();
             }}
+            tone={tone}
           >
             <Icon name={option.icon} size={16} />
           </FormatButton>
@@ -701,12 +771,18 @@ function FormatButton({
   title,
   active,
   onMouseDown,
+  tone,
 }: {
   children: ReactNode;
   title: string;
   active: boolean;
   onMouseDown: (event: React.MouseEvent) => void;
+  tone: 'app' | 'doc';
 }) {
+  const activeBackground = tone === 'doc' ? 'var(--doc-ink)' : 'var(--primary)';
+  const activeColor = tone === 'doc' ? 'var(--doc-surface)' : 'var(--primary-contrast)';
+  const idleColor = tone === 'doc' ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
+
   return (
     <button
       title={title}
@@ -717,8 +793,8 @@ function FormatButton({
         padding: '0 10px',
         borderRadius: 8,
         border: '1px solid transparent',
-        background: active ? 'var(--primary)' : 'transparent',
-        color: active ? 'var(--primary-contrast)' : 'var(--text-secondary)',
+        background: active ? activeBackground : 'transparent',
+        color: active ? activeColor : idleColor,
         cursor: 'pointer',
         transition: 'all 0.1s',
         display: 'flex',
@@ -733,8 +809,8 @@ function FormatButton({
   );
 }
 
-function ToolbarDivider() {
-  return <div style={{ width: 1, height: 22, background: 'var(--border-color)' }} />;
+function ToolbarDivider({ tone }: { tone: 'app' | 'doc' }) {
+  return <div style={{ width: 1, height: 22, background: tone === 'doc' ? 'var(--doc-border)' : 'var(--border-color)' }} />;
 }
 
 function SmallBtn({
@@ -800,13 +876,15 @@ function countPages(pages: DocPage[]): number {
   return pages.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0);
 }
 
-const controlStyle: CSSProperties = {
-  height: 32,
-  borderRadius: 8,
-  border: '1px solid var(--border-color)',
-  background: 'var(--bg-primary)',
-  color: 'var(--text-primary)',
-  padding: '0 10px',
-  fontSize: 12,
-  cursor: 'pointer',
-};
+function getControlStyle(tone: 'app' | 'doc'): CSSProperties {
+  return {
+    height: 32,
+    borderRadius: 8,
+    border: `1px solid ${tone === 'doc' ? 'var(--doc-border)' : 'var(--border-color)'}`,
+    background: tone === 'doc' ? 'var(--doc-surface)' : 'var(--bg-primary)',
+    color: tone === 'doc' ? 'var(--doc-ink)' : 'var(--text-primary)',
+    padding: '0 10px',
+    fontSize: 12,
+    cursor: 'pointer',
+  };
+}
