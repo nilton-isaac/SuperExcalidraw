@@ -31,9 +31,30 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
   const [running, setRunning] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenBounds, setFullscreenBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const previousFullscreenRef = useRef(false);
+  const whiteboardRootRef = useRef<HTMLElement | null>(null);
+
+  const measureFullscreenBounds = useCallback((root?: HTMLElement | null) => {
+    const targetRoot =
+      root
+      ?? whiteboardRootRef.current
+      ?? (panelRef.current?.closest('[data-whiteboard-root="true"]') as HTMLElement | null)
+      ?? (previewRef.current?.closest('[data-whiteboard-root="true"]') as HTMLElement | null);
+
+    if (!targetRoot) return null;
+
+    whiteboardRootRef.current = targetRoot;
+    const rect = targetRoot.getBoundingClientRect();
+    return {
+      top: rect.top + 12,
+      left: rect.left + 12,
+      width: Math.max(320, rect.width - 24),
+      height: Math.max(240, rect.height - 24),
+    };
+  }, []);
 
   const update = (field: 'html' | 'css' | 'js', value: string) =>
     updateElement(element.id, {
@@ -108,19 +129,14 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
     let observer: ResizeObserver | null = null;
 
     const updateBounds = () => {
-      const whiteboardRoot = previewRef.current?.closest('[data-whiteboard-root="true"]') as HTMLElement | null;
-      if (!whiteboardRoot) return;
-      const rect = whiteboardRoot.getBoundingClientRect();
-      setFullscreenBounds({
-        top: rect.top + 12,
-        left: rect.left + 12,
-        width: Math.max(320, rect.width - 24),
-        height: Math.max(240, rect.height - 24),
-      });
+      const nextBounds = measureFullscreenBounds();
+      if (nextBounds) {
+        setFullscreenBounds(nextBounds);
+      }
     };
 
     updateBounds();
-    const whiteboardRoot = previewRef.current?.closest('[data-whiteboard-root="true"]') as HTMLElement | null;
+    const whiteboardRoot = whiteboardRootRef.current;
     if (whiteboardRoot && 'ResizeObserver' in window) {
       observer = new ResizeObserver(updateBounds);
       observer.observe(whiteboardRoot);
@@ -133,7 +149,15 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
       window.removeEventListener('resize', updateBounds);
       window.removeEventListener('scroll', updateBounds, true);
     };
-  }, [fullscreen]);
+  }, [fullscreen, measureFullscreenBounds]);
+
+  const openModal = () => {
+    const nextBounds = measureFullscreenBounds();
+    if (nextBounds) {
+      setFullscreenBounds(nextBounds);
+    }
+    setFullscreen(true);
+  };
 
   const inlineBox: CSSProperties = {
     position: 'absolute',
@@ -158,6 +182,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
 
   const renderPanel = (mode: 'inline' | 'modal') => (
       <div
+        ref={mode === 'inline' ? panelRef : undefined}
         style={{
           ...(mode === 'modal' ? modalBox : inlineBox),
           background: 'var(--code-bg)',
@@ -285,7 +310,13 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
 
             <button
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setFullscreen((value) => !value)}
+              onClick={() => {
+                if (mode === 'modal') {
+                  setFullscreen(false);
+                  return;
+                }
+                openModal();
+              }}
               title={mode === 'modal' ? 'Close modal' : 'Open modal'}
               style={{
                 width: 28,
