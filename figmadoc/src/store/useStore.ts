@@ -1,0 +1,593 @@
+import { create } from 'zustand';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import { v4 as uuidv4 } from 'uuid';
+import type { DocPage, Tool, ViewState, WhiteboardElement } from '../types';
+import {
+  cloneData,
+  cloneElementsForPaste,
+  serializeElementsForClipboard,
+} from '../lib/whiteboardData';
+
+const MAX_HISTORY = 60;
+const APP_STORAGE_KEY = 'code-canvas-v1';
+const LEGACY_STORAGE_KEY = 'figmadoc-v1';
+const APP_NAME = 'Code Canvas';
+const LEGACY_APP_NAME = 'FigmaDoc';
+
+const PAGE_ICON_MAP: Record<string, string> = {
+  '📄': 'description',
+  '📝': 'article',
+};
+
+const fallbackStorage: StateStorage = {
+  getItem: (name) => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(name)
+      ?? (name === APP_STORAGE_KEY ? localStorage.getItem(LEGACY_STORAGE_KEY) : null);
+  },
+  setItem: (name, value) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(name, value);
+    if (name === APP_STORAGE_KEY) {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+  },
+  removeItem: (name) => {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(name);
+    if (name === APP_STORAGE_KEY) {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+  },
+};
+
+const normalizePageIcon = (icon?: string) => {
+  if (!icon) return 'description';
+  return PAGE_ICON_MAP[icon] ?? icon;
+};
+
+const normalizeLegacyTitle = (value?: string | null) => {
+  const normalized = value?.trim();
+  if (!normalized || normalized === LEGACY_APP_NAME) {
+    return APP_NAME;
+  }
+  return normalized;
+};
+
+const normalizePages = (pages: DocPage[]): DocPage[] =>
+  pages.map((page) => ({
+    ...page,
+    icon: normalizePageIcon(page.icon),
+    children: page.children ? normalizePages(page.children) : undefined,
+  }));
+
+const makeInitialPages = (): DocPage[] => [
+  {
+    id: 'page-1',
+    title: 'Untitled',
+    icon: 'description',
+    content: '<h1>Untitled</h1><p>Start writing here...</p>',
+  },
+];
+
+const updatePageTree = (pages: DocPage[], id: string, updates: Partial<DocPage>): DocPage[] =>
+  pages.map((page) => {
+    if (page.id === id) return { ...page, ...updates };
+    if (!page.children) return page;
+    return {
+      ...page,
+      children: updatePageTree(page.children, id, updates),
+    };
+  });
+
+const deletePageTree = (pages: DocPage[], id: string): DocPage[] =>
+  pages.flatMap((page) => {
+    if (page.id === id) return [];
+    if (!page.children) return [page];
+    return [
+      {
+        ...page,
+        children: deletePageTree(page.children, id),
+      },
+    ];
+  });
+
+const findFirstPageId = (pages: DocPage[]): string | null => {
+  for (const page of pages) {
+    return page.id;
+  }
+
+  return null;
+};
+
+interface BoardSnapshot {
+  elements: WhiteboardElement[];
+  pages: DocPage[];
+  activePageId: string | null;
+  documentTitle: string;
+  theme: 'light' | 'dark';
+  layoutMode: 'horizontal' | 'vertical';
+  splitRatio: number;
+  viewState: ViewState;
+}
+
+interface SavedBoard {
+  id: string;
+  name: string;
+  updatedAt: string;
+  snapshot: BoardSnapshot;
+}
+
+const makeInitialViewState = (): ViewState => ({ x: 0, y: 0, zoom: 1 });
+
+const makeBlankBoard = (title = 'Untitled Board'): BoardSnapshot => ({
+  elements: [],
+  pages: makeInitialPages(),
+  activePageId: 'page-1',
+  documentTitle: normalizeLegacyTitle(title),
+  theme: 'light',
+  layoutMode: 'horizontal',
+  splitRatio: 0.28,
+  viewState: makeInitialViewState(),
+});
+
+const normalizeSavedBoards = (boards: SavedBoard[] | undefined): SavedBoard[] =>
+  (boards ?? []).map((board) => ({
+    ...board,
+    name: normalizeLegacyTitle(board.name),
+    snapshot: {
+      ...board.snapshot,
+      pages: normalizePages(board.snapshot.pages ?? makeInitialPages()),
+      activePageId: board.snapshot.activePageId ?? findFirstPageId(board.snapshot.pages ?? makeInitialPages()),
+      viewState: board.snapshot.viewState ?? makeInitialViewState(),
+      documentTitle: normalizeLegacyTitle(board.snapshot.documentTitle ?? board.name),
+      theme: board.snapshot.theme ?? 'light',
+      layoutMode: board.snapshot.layoutMode ?? 'horizontal',
+      splitRatio: board.snapshot.splitRatio ?? 0.28,
+      elements: board.snapshot.elements ?? [],
+    },
+  }));
+
+const createBoardSnapshot = (state: Pick<
+  AppStore,
+  'elements' | 'pages' | 'activePageId' | 'documentTitle' | 'theme' | 'layoutMode' | 'splitRatio' | 'viewState'
+>): BoardSnapshot => ({
+  elements: cloneData(state.elements),
+  pages: cloneData(state.pages),
+  activePageId: state.activePageId,
+  documentTitle: state.documentTitle,
+  theme: state.theme,
+  layoutMode: state.layoutMode,
+  splitRatio: state.splitRatio,
+  viewState: cloneData(state.viewState),
+});
+
+interface AppStore {
+  elements: WhiteboardElement[];
+  pages: DocPage[];
+  activePageId: string | null;
+  documentTitle: string;
+  savedBoards: SavedBoard[];
+  activeBoardId: string | null;
+  theme: 'light' | 'dark';
+  layoutMode: 'horizontal' | 'vertical';
+  splitRatio: number;
+
+  selectedIds: string[];
+  activeTool: Tool;
+  viewState: ViewState;
+  undoPast: WhiteboardElement[][];
+  undoFuture: WhiteboardElement[][];
+  clipboard: WhiteboardElement[];
+
+  historyPush: () => void;
+  undo: () => void;
+  redo: () => void;
+
+  addElement: (element: Omit<WhiteboardElement, 'id' | 'zIndex'>) => string;
+  updateElement: (id: string, updates: Partial<WhiteboardElement>) => void;
+  deleteElement: (id: string) => void;
+  deleteSelectedElements: () => void;
+  duplicateElement: (id: string) => void;
+
+  selectElement: (id: string, additive?: boolean) => void;
+  clearSelection: () => void;
+  selectAll: () => void;
+
+  groupSelected: () => void;
+  ungroupSelected: () => void;
+  toggleLock: (id: string) => void;
+
+  copySelected: () => Promise<void>;
+  paste: (source?: WhiteboardElement[]) => void;
+
+  setActiveTool: (tool: Tool) => void;
+  setViewState: (vs: Partial<ViewState>) => void;
+
+  addPage: (parentId?: string) => void;
+  updatePage: (id: string, updates: Partial<DocPage>) => void;
+  deletePage: (id: string) => void;
+  setActivePageId: (id: string) => void;
+  setDocumentTitle: (title: string) => void;
+  saveCurrentBoard: (name?: string) => string;
+  saveBoardAs: (name: string) => string;
+  loadBoard: (id: string) => void;
+  deleteBoard: (id: string) => void;
+  createBoard: (title?: string) => void;
+
+  setTheme: (theme: 'light' | 'dark') => void;
+  toggleTheme: () => void;
+  setLayoutMode: (mode: 'horizontal' | 'vertical') => void;
+  setSplitRatio: (ratio: number) => void;
+}
+
+export const useStore = create<AppStore>()(
+  persist(
+    (set, get) => ({
+      elements: [],
+      pages: makeInitialPages(),
+      activePageId: 'page-1',
+      documentTitle: APP_NAME,
+      savedBoards: [],
+      activeBoardId: null,
+      theme: 'light',
+      layoutMode: 'horizontal',
+      splitRatio: 0.28,
+
+      selectedIds: [],
+      activeTool: 'select',
+      viewState: makeInitialViewState(),
+      undoPast: [],
+      undoFuture: [],
+      clipboard: [],
+
+      historyPush: () => {
+        const { elements, undoPast } = get();
+        set({
+          undoPast: [...undoPast, elements].slice(-MAX_HISTORY),
+          undoFuture: [],
+        });
+      },
+
+      undo: () => {
+        const { undoPast, elements, undoFuture } = get();
+        if (undoPast.length === 0) return;
+        const previous = undoPast[undoPast.length - 1];
+        set({
+          elements: previous,
+          undoPast: undoPast.slice(0, -1),
+          undoFuture: [elements, ...undoFuture].slice(0, MAX_HISTORY),
+          selectedIds: [],
+        });
+      },
+
+      redo: () => {
+        const { undoFuture, elements, undoPast } = get();
+        if (undoFuture.length === 0) return;
+        const next = undoFuture[0];
+        set({
+          elements: next,
+          undoFuture: undoFuture.slice(1),
+          undoPast: [...undoPast, elements].slice(-MAX_HISTORY),
+          selectedIds: [],
+        });
+      },
+
+      addElement: (element) => {
+        get().historyPush();
+        const id = uuidv4();
+        const maxZIndex = get().elements.reduce((max, current) => Math.max(max, current.zIndex), 0);
+        const nextElement = { ...element, id, zIndex: maxZIndex + 1 } as WhiteboardElement;
+        set((state) => ({ elements: [...state.elements, nextElement] }));
+        return id;
+      },
+
+      updateElement: (id, updates) =>
+        set((state) => ({
+          elements: state.elements.map((element) =>
+            element.id === id ? ({ ...element, ...updates } as WhiteboardElement) : element
+          ),
+        })),
+
+      deleteElement: (id) => {
+        get().historyPush();
+        set((state) => ({
+          elements: state.elements.filter((element) => element.id !== id),
+          selectedIds: state.selectedIds.filter((selectedId) => selectedId !== id),
+        }));
+      },
+
+      deleteSelectedElements: () => {
+        const ids = get().selectedIds;
+        if (ids.length === 0) return;
+        get().historyPush();
+        set((state) => ({
+          elements: state.elements.filter((element) => !ids.includes(element.id)),
+          selectedIds: [],
+        }));
+      },
+
+      duplicateElement: (id) => {
+        const element = get().elements.find((candidate) => candidate.id === id);
+        if (!element) return;
+        get().historyPush();
+        const maxZIndex = get().elements.reduce((max, current) => Math.max(max, current.zIndex), 0);
+        const duplicated: WhiteboardElement = {
+          ...element,
+          id: uuidv4(),
+          x: element.x + 20,
+          y: element.y + 20,
+          zIndex: maxZIndex + 1,
+          groupId: undefined,
+          locked: false,
+        };
+        set((state) => ({
+          elements: [...state.elements, duplicated],
+          selectedIds: [duplicated.id],
+        }));
+      },
+
+      selectElement: (id, additive = false) => {
+        const { elements } = get();
+        const element = elements.find((candidate) => candidate.id === id);
+        const groupId = element?.groupId;
+        const nextIds = groupId
+          ? elements.filter((candidate) => candidate.groupId === groupId).map((candidate) => candidate.id)
+          : [id];
+
+        set((state) => ({
+          selectedIds: additive
+            ? nextIds.every((candidateId) => state.selectedIds.includes(candidateId))
+              ? state.selectedIds.filter((selectedId) => !nextIds.includes(selectedId))
+              : [...new Set([...state.selectedIds, ...nextIds])]
+            : nextIds,
+        }));
+      },
+
+      clearSelection: () => set({ selectedIds: [] }),
+
+      selectAll: () =>
+        set((state) => ({
+          selectedIds: state.elements.filter((element) => !element.locked).map((element) => element.id),
+        })),
+
+      groupSelected: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length < 2) return;
+        get().historyPush();
+        const groupId = uuidv4();
+        set({
+          elements: elements.map((element) =>
+            selectedIds.includes(element.id) ? { ...element, groupId } : element
+          ),
+        });
+      },
+
+      ungroupSelected: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length === 0) return;
+        get().historyPush();
+        set({
+          elements: elements.map((element) =>
+            selectedIds.includes(element.id) ? { ...element, groupId: undefined } : element
+          ),
+        });
+      },
+
+      toggleLock: (id) => {
+        const target = get().elements.find((element) => element.id === id);
+        if (!target) return;
+        set({
+          elements: get().elements.map((element) =>
+            element.id === id ? { ...element, locked: !element.locked } : element
+          ),
+          selectedIds: target.locked
+            ? get().selectedIds
+            : get().selectedIds.filter((selectedId) => selectedId !== id),
+        });
+      },
+
+      copySelected: async () => {
+        const { elements, selectedIds } = get();
+        const clipboard = elements.filter((element) => selectedIds.includes(element.id));
+        set({ clipboard });
+        if (clipboard.length === 0 || !navigator?.clipboard?.writeText) return;
+        try {
+          await navigator.clipboard.writeText(serializeElementsForClipboard(clipboard));
+        } catch {
+          // Ignore clipboard permission failures.
+        }
+      },
+
+      paste: (source) => {
+        const { clipboard, elements } = get();
+        const sourceElements = source && source.length > 0 ? source : clipboard;
+        if (sourceElements.length === 0) return;
+        get().historyPush();
+        const maxZIndex = elements.reduce((max, current) => Math.max(max, current.zIndex), 0);
+        const pasted = cloneElementsForPaste(sourceElements, maxZIndex);
+
+        set((state) => ({
+          elements: [...state.elements, ...pasted],
+          selectedIds: pasted.map((element) => element.id),
+          clipboard: pasted,
+        }));
+      },
+
+      setActiveTool: (tool) => set({ activeTool: tool, selectedIds: [] }),
+
+      setViewState: (viewState) =>
+        set((state) => ({
+          viewState: { ...state.viewState, ...viewState },
+        })),
+
+      addPage: (parentId) => {
+        const newPage: DocPage = {
+          id: uuidv4(),
+          title: 'Untitled',
+          icon: 'article',
+          content: '<h1>Untitled</h1><p>Start writing here...</p>',
+        };
+
+        set((state) => {
+          if (parentId) {
+            return {
+              pages: state.pages.map((page) =>
+                page.id === parentId
+                  ? { ...page, children: [...(page.children ?? []), newPage] }
+                  : page
+              ),
+              activePageId: newPage.id,
+            };
+          }
+
+          return {
+            pages: [...state.pages, newPage],
+            activePageId: newPage.id,
+          };
+        });
+      },
+
+      updatePage: (id, updates) =>
+        set((state) => ({
+          pages: updatePageTree(state.pages, id, updates),
+        })),
+
+      deletePage: (id) =>
+        set((state) => {
+          const pages = deletePageTree(state.pages, id);
+          return {
+            pages,
+            activePageId:
+              state.activePageId === id
+                ? findFirstPageId(pages)
+                : state.activePageId,
+          };
+        }),
+
+      setActivePageId: (id) => set({ activePageId: id }),
+      setDocumentTitle: (documentTitle) => set({ documentTitle: normalizeLegacyTitle(documentTitle) }),
+      saveCurrentBoard: (name) => {
+        const state = get();
+        const id = state.activeBoardId ?? uuidv4();
+        const boardName = name?.trim() || state.documentTitle.trim() || 'Untitled Board';
+        const nextBoard: SavedBoard = {
+          id,
+          name: boardName,
+          updatedAt: new Date().toISOString(),
+          snapshot: createBoardSnapshot(state),
+        };
+
+        set((current) => ({
+          savedBoards: [
+            nextBoard,
+            ...current.savedBoards.filter((board) => board.id !== id),
+          ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+          activeBoardId: id,
+        }));
+
+        return id;
+      },
+      saveBoardAs: (name) => {
+        const state = get();
+        const id = uuidv4();
+        const boardName = name.trim() || state.documentTitle.trim() || 'Untitled Board';
+        const nextBoard: SavedBoard = {
+          id,
+          name: boardName,
+          updatedAt: new Date().toISOString(),
+          snapshot: createBoardSnapshot(state),
+        };
+
+        set((current) => ({
+          savedBoards: [nextBoard, ...current.savedBoards].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+          activeBoardId: id,
+        }));
+
+        return id;
+      },
+      loadBoard: (id) => {
+        const board = get().savedBoards.find((candidate) => candidate.id === id);
+        if (!board) return;
+
+        const snapshot = cloneData(board.snapshot);
+        const pages = normalizePages(snapshot.pages);
+        set({
+          elements: snapshot.elements,
+          pages,
+          activePageId: snapshot.activePageId ?? findFirstPageId(pages),
+          documentTitle: snapshot.documentTitle,
+          activeBoardId: board.id,
+          theme: snapshot.theme,
+          layoutMode: snapshot.layoutMode,
+          splitRatio: snapshot.splitRatio,
+          viewState: snapshot.viewState,
+          selectedIds: [],
+          activeTool: 'select',
+          undoPast: [],
+          undoFuture: [],
+          clipboard: [],
+        });
+      },
+      deleteBoard: (id) =>
+        set((state) => ({
+          savedBoards: state.savedBoards.filter((board) => board.id !== id),
+          activeBoardId: state.activeBoardId === id ? null : state.activeBoardId,
+        })),
+      createBoard: (title) => {
+        const blank = makeBlankBoard(title?.trim() || 'Untitled Board');
+        set({
+          elements: blank.elements,
+          pages: blank.pages,
+          activePageId: blank.activePageId,
+          documentTitle: blank.documentTitle,
+          activeBoardId: null,
+          selectedIds: [],
+          activeTool: 'select',
+          viewState: blank.viewState,
+          undoPast: [],
+          undoFuture: [],
+          clipboard: [],
+        });
+      },
+
+      setTheme: (theme) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
+      setLayoutMode: (layoutMode) => set({ layoutMode }),
+      setSplitRatio: (splitRatio) => set({ splitRatio }),
+    }),
+    {
+      name: APP_STORAGE_KEY,
+      storage: createJSONStorage(() => fallbackStorage),
+      version: 4,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<AppStore> | undefined;
+        const pages = state?.pages ? normalizePages(state.pages) : makeInitialPages();
+        return {
+          elements: state?.elements ?? [],
+          pages,
+          activePageId: state?.activePageId ?? pages[0]?.id ?? null,
+          documentTitle: normalizeLegacyTitle(state?.documentTitle),
+          savedBoards: normalizeSavedBoards(state?.savedBoards),
+          activeBoardId: state?.activeBoardId ?? null,
+          theme: state?.theme ?? 'light',
+          layoutMode: state?.layoutMode ?? 'horizontal',
+          splitRatio: state?.splitRatio ?? 0.28,
+          viewState: state?.viewState ?? makeInitialViewState(),
+        };
+      },
+      partialize: (state) => ({
+        elements: state.elements,
+        pages: state.pages,
+        activePageId: state.activePageId,
+        documentTitle: state.documentTitle,
+        savedBoards: state.savedBoards,
+        activeBoardId: state.activeBoardId,
+        theme: state.theme,
+        layoutMode: state.layoutMode,
+        splitRatio: state.splitRatio,
+        viewState: state.viewState,
+      }),
+    }
+  )
+);

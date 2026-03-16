@@ -1,0 +1,258 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Merriweather:wght@400;700&family=Space+Grotesk:wght@400;500;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --primary: #000000;
+  --primary-contrast: #ffffff;
+  --bg-primary: #ffffff;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: rgba(0, 0, 0, 0.045);
+  --bg-elevated: #ffffff;
+  --text-primary: #000000;
+  --text-secondary: rgba(0, 0, 0, 0.72);
+  --text-muted: rgba(0, 0, 0, 0.46);
+  --border-color: rgba(0, 0, 0, 0.18);
+  --border-strong: #000000;
+  --danger: #000000;
+  --code-bg: #000000;
+  --code-fg: #ffffff;
+  --canvas-bg: #ffffff;
+  --grid-color: rgba(0, 0, 0, 0.15);
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.16);
+}
+
+[data-theme="dark"] {
+  --primary: #ffffff;
+  --primary-contrast: #000000;
+  --bg-primary: #000000;
+  --bg-secondary: #000000;
+  --bg-tertiary: rgba(255, 255, 255, 0.08);
+  --bg-elevated: #000000;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.8);
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --border-color: rgba(255, 255, 255, 0.2);
+  --border-strong: #ffffff;
+  --danger: #ffffff;
+  --code-bg: #000000;
+  --code-fg: #ffffff;
+  --canvas-bg: #000000;
+  --grid-color: rgba(255, 255, 255, 0.14);
+  --backdrop: rgba(0, 0, 0, 0.72);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.tiptap {
+  outline: none;
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ProseMirror {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tiptap h1 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.tiptap h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.tiptap h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+  color: var(--text-primary);
+}
+
+.tiptap p {
+  font-size: 0.925rem;
+  line-height: 1.75;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.tiptap ul,
+.tiptap ol {
+  margin: 0.75rem 0;
+  padding-left: 1.25rem;
+}
+
+.tiptap li {
+  font-size: 0.925rem;
+  line-height: 1.75;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.tiptap blockquote {
+  border-left: 4px solid var(--primary);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.tiptap code {
+  background: var(--bg-tertiary);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.tiptap pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1rem;
+  border-radius: 10px;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.tiptap pre code {
+  background: none;
+  color: var(--code-fg);
+  padding: 0;
+}
+
+.tiptap hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 1.5rem 0;
+}
+
+.tiptap strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tiptap mark {
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.tiptap .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-muted);
+  pointer-events: none;
+  height: 0;
+}
+
+.tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.tiptap ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.tiptap ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
