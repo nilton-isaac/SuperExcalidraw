@@ -25,12 +25,24 @@ const FONT_OPTIONS = [
 const TEXT_COLORS = ['#000000', '#ffffff', '#6b7280', '#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea'];
 
 export function Sidebar() {
-  const { pages, activePageId, setActivePageId, addPage, updatePage, deletePage } = useStore();
+  const {
+    pages,
+    activePageId,
+    setActivePageId,
+    addPage,
+    updatePage,
+    deletePage,
+    docsNavigatorCollapsed,
+    toggleDocsNavigatorCollapsed,
+    setActiveSurface,
+  } = useStore();
 
   const activePage = findPage(pages, activePageId);
+  const totalPages = countPages(pages);
 
   return (
     <aside
+      data-docs-root="true"
       style={{
         width: '100%',
         minWidth: 0,
@@ -43,6 +55,8 @@ export function Sidebar() {
         position: 'relative',
         flexShrink: 0,
       }}
+      onPointerDownCapture={() => setActiveSurface('document')}
+      onFocusCapture={() => setActiveSurface('document')}
     >
       <div
         style={{
@@ -68,28 +82,108 @@ export function Sidebar() {
 
         <div style={{ display: 'flex', gap: 4 }}>
           <SmallBtn icon="add" title="New page" onClick={() => addPage()} />
+          <SmallBtn
+            icon={docsNavigatorCollapsed ? 'keyboard_arrow_down' : 'keyboard_arrow_up'}
+            title={docsNavigatorCollapsed ? 'Expand pages' : 'Collapse pages'}
+            onClick={toggleDocsNavigatorCollapsed}
+          />
         </div>
       </div>
 
       <div
         style={{
-          padding: '8px 8px 0',
+          padding: '10px 12px',
           flexShrink: 0,
           borderBottom: '1px solid var(--border-color)',
-          paddingBottom: 8,
+          display: 'grid',
+          gap: 8,
         }}
       >
-        {pages.map((page) => (
-          <NavNode
-            key={page.id}
-            page={page}
-            activePageId={activePageId}
-            onSelect={setActivePageId}
-            onDelete={deletePage}
-            onAddChild={(id) => addPage(id)}
-            depth={0}
-          />
-        ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+              }}
+            >
+              Pages
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {totalPages} {totalPages === 1 ? 'page' : 'pages'}
+            </div>
+          </div>
+
+          <button
+            onClick={toggleDocsNavigatorCollapsed}
+            style={{
+              height: 28,
+              padding: '0 10px',
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {docsNavigatorCollapsed ? 'Expand' : 'Compact'}
+          </button>
+        </div>
+
+        {docsNavigatorCollapsed ? (
+          <button
+            onClick={toggleDocsNavigatorCollapsed}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 12,
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <PageIcon name={activePage?.icon ?? 'description'} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {activePage?.title ?? 'No active page'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Open pages list</div>
+            </div>
+            <Icon name="chevron_right" size={18} />
+          </button>
+        ) : (
+          <div style={{ maxHeight: 172, overflowY: 'auto', paddingRight: 4 }}>
+            {pages.map((page) => (
+              <NavNode
+                key={page.id}
+                page={page}
+                activePageId={activePageId}
+                onSelect={setActivePageId}
+                onDelete={deletePage}
+                onAddChild={(id) => addPage(id)}
+                depth={0}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -633,6 +727,10 @@ function findPage(pages: DocPage[], id: string | null): DocPage | null {
     }
   }
   return null;
+}
+
+function countPages(pages: DocPage[]): number {
+  return pages.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0);
 }
 
 const controlStyle: CSSProperties = {

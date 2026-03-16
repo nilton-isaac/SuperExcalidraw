@@ -6,7 +6,7 @@ import { Whiteboard } from './components/Whiteboard';
 import './index.css';
 
 export default function App() {
-  const { theme, layoutMode, splitRatio, setSplitRatio } = useStore();
+  const { theme, layoutMode, splitRatio, panelMode, setSplitRatio } = useStore();
 
   // Apply theme to <html>
   useEffect(() => {
@@ -45,6 +45,29 @@ export default function App() {
 
   const sidebarSize = `${(splitRatio * 100).toFixed(1)}%`;
   const whiteboardSize = `${((1 - splitRatio) * 100).toFixed(1)}%`;
+  const showDocs = panelMode !== 'whiteboard-only';
+  const showWhiteboard = panelMode !== 'docs-only';
+  const showSplitHandle = showDocs && showWhiteboard;
+
+  const docsPanelStyle = showSplitHandle
+    ? {
+        [isH ? 'width' : 'height']: sidebarSize,
+        flexShrink: 0,
+      }
+    : {
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+      };
+
+  const whiteboardPanelStyle = showSplitHandle
+    ? {
+        [isH ? 'width' : 'height']: whiteboardSize,
+        flex: 1,
+      }
+    : {
+        flex: 1,
+      };
 
   return (
     <div
@@ -70,54 +93,55 @@ export default function App() {
           minHeight: 0,
         }}
       >
-        {/* Docs panel */}
-        <div
-          style={{
-            [isH ? 'width' : 'height']: sidebarSize,
-            flexShrink: 0,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          <Sidebar />
-        </div>
+        {showDocs && (
+          <div
+            style={{
+              ...docsPanelStyle,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <Sidebar />
+          </div>
+        )}
 
-        {/* Resize handle */}
-        <div
-          onMouseDown={onSplitMouseDown}
-          title="Drag to resize"
-          style={{
-            [isH ? 'width' : 'height']: 4,
-            [isH ? 'height' : 'width']: '100%',
-            flexShrink: 0,
-            background: 'var(--border-color)',
-            cursor: isH ? 'col-resize' : 'row-resize',
-            transition: 'background 0.15s',
-            zIndex: 10,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.background = 'var(--primary)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLDivElement).style.background = 'var(--border-color)';
-          }}
-        />
+        {showSplitHandle && (
+          <div
+            onMouseDown={onSplitMouseDown}
+            title="Drag to resize"
+            style={{
+              [isH ? 'width' : 'height']: 4,
+              [isH ? 'height' : 'width']: '100%',
+              flexShrink: 0,
+              background: 'var(--border-color)',
+              cursor: isH ? 'col-resize' : 'row-resize',
+              transition: 'background 0.15s',
+              zIndex: 10,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = 'var(--primary)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.background = 'var(--border-color)';
+            }}
+          />
+        )}
 
-        {/* Whiteboard panel */}
-        <div
-          style={{
-            [isH ? 'width' : 'height']: whiteboardSize,
-            flex: 1,
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
-            minHeight: 0,
-          }}
-        >
-          <Whiteboard />
-        </div>
+        {showWhiteboard && (
+          <div
+            style={{
+              ...whiteboardPanelStyle,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              minWidth: 0,
+              minHeight: 0,
+            }}
+          >
+            <Whiteboard />
+          </div>
+        )}
       </div>
     </div>
   );

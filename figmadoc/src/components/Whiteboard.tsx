@@ -35,6 +35,8 @@ export function Whiteboard() {
     historyPush,
     undo,
     redo,
+    activeSurface,
+    setActiveSurface,
   } = useStore();
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -64,74 +66,90 @@ export function Whiteboard() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
+      const target = event.target;
+      const isEditing = isEditableTarget(target);
+      const insideWhiteboard = isInsideSurface(target, 'whiteboard');
+      const insideDocs = isInsideSurface(target, 'document');
+      const hasPrimaryModifier = event.ctrlKey || event.metaKey;
+      const hasToolModifier = hasPrimaryModifier || event.altKey;
+      const shouldHandleWhiteboard =
+        !insideDocs && !isEditing && (insideWhiteboard || activeSurface === 'whiteboard');
 
-      if (event.code === 'Space' && !isEditing) {
+      if (!shouldHandleWhiteboard) {
+        return;
+      }
+
+      if (event.code === 'Space') {
         event.preventDefault();
         setIsSpaceDown(true);
       }
 
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'z') {
+      if (hasPrimaryModifier && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault();
         undo();
         return;
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+      if (hasPrimaryModifier && event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault();
         redo();
         return;
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key === 'y') {
+      if (hasPrimaryModifier && (event.key === 'y' || event.key === 'Y')) {
         event.preventDefault();
         redo();
         return;
       }
 
-      if (!isEditing) {
-        if (event.key === 'Delete' || event.key === 'Backspace') deleteSelectedElements();
-        if (event.key === 'Escape') {
-          clearSelection();
-          setActiveTool('select');
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
-          event.preventDefault();
-          selectAll();
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key === 'd') {
-          event.preventDefault();
-          selectedIds.forEach((id) => duplicateElement(id));
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
-          event.preventDefault();
-          void copySelected();
-        }
-        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'g') {
-          event.preventDefault();
-          groupSelected();
-        }
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'g' || event.key === 'G')) {
-          event.preventDefault();
-          ungroupSelected();
-        }
-        if (event.key === 'l' || event.key === 'L') selectedIds.forEach((id) => toggleLock(id));
-
-        if (event.key === 'v' || event.key === 'V') setActiveTool('select');
-        if (event.key === 'h' || event.key === 'H') setActiveTool('hand');
-        if (event.key === 'r' || event.key === 'R') setActiveTool('rectangle');
-        if (event.key === 'o' || event.key === 'O') setActiveTool('circle');
-        if (!event.ctrlKey && !event.metaKey && (event.key === 'd' || event.key === 'D')) setActiveTool('diamond');
-        if (event.key === 's' || event.key === 'S') setActiveTool('sticky');
-        if (!event.ctrlKey && !event.metaKey && (event.key === 'c' || event.key === 'C')) setActiveTool('code');
-        if (!event.ctrlKey && !event.metaKey && (event.key === 'a' || event.key === 'A')) setActiveTool('arrow');
-        if (event.key === 't' || event.key === 'T') setActiveTool('text');
-        if (event.key === 'i' || event.key === 'I') setActiveTool('image');
-        if (event.key === 'p' || event.key === 'P') setActiveTool('pen');
-        if (event.key === 'e' || event.key === 'E') setActiveTool('eraser');
+      if (event.key === 'Delete' || event.key === 'Backspace') deleteSelectedElements();
+      if (event.key === 'Escape') {
+        clearSelection();
+        setActiveTool('select');
       }
+      if (hasPrimaryModifier && (event.key === 'a' || event.key === 'A')) {
+        event.preventDefault();
+        selectAll();
+        return;
+      }
+      if (hasPrimaryModifier && (event.key === 'd' || event.key === 'D')) {
+        event.preventDefault();
+        selectedIds.forEach((id) => duplicateElement(id));
+        return;
+      }
+      if (hasPrimaryModifier && (event.key === 'c' || event.key === 'C')) {
+        event.preventDefault();
+        void copySelected();
+        return;
+      }
+      if (hasPrimaryModifier && !event.shiftKey && (event.key === 'g' || event.key === 'G')) {
+        event.preventDefault();
+        groupSelected();
+        return;
+      }
+      if (hasPrimaryModifier && event.shiftKey && (event.key === 'g' || event.key === 'G')) {
+        event.preventDefault();
+        ungroupSelected();
+        return;
+      }
+
+      if (hasToolModifier) {
+        return;
+      }
+
+      if (event.key === 'l' || event.key === 'L') selectedIds.forEach((id) => toggleLock(id));
+      if (event.key === 'v' || event.key === 'V') setActiveTool('select');
+      if (event.key === 'h' || event.key === 'H') setActiveTool('hand');
+      if (event.key === 'r' || event.key === 'R') setActiveTool('rectangle');
+      if (event.key === 'o' || event.key === 'O') setActiveTool('circle');
+      if (event.key === 'd' || event.key === 'D') setActiveTool('diamond');
+      if (event.key === 's' || event.key === 'S') setActiveTool('sticky');
+      if (event.key === 'c' || event.key === 'C') setActiveTool('code');
+      if (event.key === 'a' || event.key === 'A') setActiveTool('arrow');
+      if (event.key === 't' || event.key === 'T') setActiveTool('text');
+      if (event.key === 'i' || event.key === 'I') setActiveTool('image');
+      if (event.key === 'p' || event.key === 'P') setActiveTool('pen');
+      if (event.key === 'e' || event.key === 'E') setActiveTool('eraser');
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
@@ -146,6 +164,7 @@ export function Whiteboard() {
       window.removeEventListener('keyup', onKeyUp);
     };
   }, [
+    activeSurface,
     selectedIds,
     deleteSelectedElements,
     clearSelection,
@@ -163,10 +182,11 @@ export function Whiteboard() {
 
   useEffect(() => {
     const onPaste = async (event: ClipboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName;
-      const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable;
-      if (isEditing) return;
+      const target = event.target;
+      const isEditing = isEditableTarget(target);
+      const insideWhiteboard = isInsideSurface(target, 'whiteboard');
+      const insideDocs = isInsideSurface(target, 'document');
+      if (isEditing || insideDocs || (!insideWhiteboard && activeSurface !== 'whiteboard')) return;
 
       const clipboardData = event.clipboardData;
       if (!clipboardData) return;
@@ -232,7 +252,7 @@ export function Whiteboard() {
 
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [addElement, getViewportCenter, paste, selectElement]);
+  }, [activeSurface, addElement, getViewportCenter, paste, selectElement]);
 
   useEffect(() => {
     const element = wrapperRef.current;
@@ -573,6 +593,7 @@ export function Whiteboard() {
       <div
         ref={wrapperRef}
         data-whiteboard-root="true"
+        tabIndex={0}
         style={{
           flex: 1,
           position: 'relative',
@@ -580,7 +601,10 @@ export function Whiteboard() {
           background: 'var(--canvas-bg)',
           cursor: getCursor(),
           minHeight: 0,
+          outline: 'none',
         }}
+        onPointerDownCapture={() => setActiveSurface('whiteboard')}
+        onFocusCapture={() => setActiveSurface('whiteboard')}
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onCanvasPointerMove}
         onPointerUp={onCanvasPointerUp}
@@ -883,6 +907,19 @@ export function Whiteboard() {
       )}
     </div>
   );
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [contenteditable]')
+  );
+}
+
+function isInsideSurface(target: EventTarget | null, surface: 'document' | 'whiteboard') {
+  if (!(target instanceof HTMLElement)) return false;
+  const selector = surface === 'document' ? '[data-docs-root="true"]' : '[data-whiteboard-root="true"]';
+  return Boolean(target.closest(selector));
 }
 
 function readFileAsDataURL(file: File) {

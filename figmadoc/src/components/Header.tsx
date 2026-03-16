@@ -38,6 +38,8 @@ export function Header() {
     setDocumentTitle,
     layoutMode,
     setLayoutMode,
+    panelMode,
+    setPanelMode,
     undo,
     redo,
     undoPast,
@@ -188,9 +190,31 @@ export function Header() {
         <Divider />
 
         <IconBtn
+          icon="description"
+          title="Document only"
+          active={panelMode === 'docs-only'}
+          onClick={() => setPanelMode('docs-only')}
+        />
+        <IconBtn
+          icon="splitscreen"
+          title="Split view"
+          active={panelMode === 'split'}
+          onClick={() => setPanelMode('split')}
+        />
+        <IconBtn
+          icon="space_dashboard"
+          title="Whiteboard only"
+          active={panelMode === 'whiteboard-only'}
+          onClick={() => setPanelMode('whiteboard-only')}
+        />
+
+        <Divider />
+
+        <IconBtn
           icon={layoutMode === 'horizontal' ? 'view_agenda' : 'view_week'}
           title={layoutMode === 'horizontal' ? 'Vertical split' : 'Horizontal split'}
           onClick={() => setLayoutMode(layoutMode === 'horizontal' ? 'vertical' : 'horizontal')}
+          disabled={panelMode !== 'split'}
         />
 
         <IconBtn
@@ -466,11 +490,13 @@ function IconBtn({
   title,
   onClick,
   disabled,
+  active,
 }: {
   icon: string;
   title?: string;
   onClick?: () => void;
   disabled?: boolean;
+  active?: boolean;
 }) {
   const [hover, setHover] = useState(false);
 
@@ -485,19 +511,19 @@ function IconBtn({
         height: 34,
         padding: 0,
         borderRadius: 10,
-        border: '1px solid transparent',
-        background: hover && !disabled ? 'var(--bg-tertiary)' : 'transparent',
+        border: active ? '1px solid var(--primary)' : '1px solid transparent',
+        background: active ? 'var(--primary)' : hover && !disabled ? 'var(--bg-tertiary)' : 'transparent',
         cursor: disabled ? 'default' : 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+        color: disabled ? 'var(--text-muted)' : active ? 'var(--primary-contrast)' : 'var(--text-primary)',
         opacity: disabled ? 0.35 : 1,
         transition: 'all 0.12s',
         flexShrink: 0,
       }}
     >
-      <Icon name={icon} size={19} />
+      <Icon name={icon} size={19} filled={active} />
     </button>
   );
 }

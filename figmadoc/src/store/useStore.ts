@@ -115,6 +115,8 @@ interface BoardSnapshot {
   theme: 'light' | 'dark';
   layoutMode: 'horizontal' | 'vertical';
   splitRatio: number;
+  panelMode: 'split' | 'docs-only' | 'whiteboard-only';
+  docsNavigatorCollapsed: boolean;
   viewState: ViewState;
 }
 
@@ -135,6 +137,8 @@ const makeBlankBoard = (title = 'Untitled Board'): BoardSnapshot => ({
   theme: 'light',
   layoutMode: 'horizontal',
   splitRatio: 0.28,
+  panelMode: 'split',
+  docsNavigatorCollapsed: false,
   viewState: makeInitialViewState(),
 });
 
@@ -151,13 +155,24 @@ const normalizeSavedBoards = (boards: SavedBoard[] | undefined): SavedBoard[] =>
       theme: board.snapshot.theme ?? 'light',
       layoutMode: board.snapshot.layoutMode ?? 'horizontal',
       splitRatio: board.snapshot.splitRatio ?? 0.28,
+      panelMode: board.snapshot.panelMode ?? 'split',
+      docsNavigatorCollapsed: board.snapshot.docsNavigatorCollapsed ?? false,
       elements: board.snapshot.elements ?? [],
     },
   }));
 
 const createBoardSnapshot = (state: Pick<
   AppStore,
-  'elements' | 'pages' | 'activePageId' | 'documentTitle' | 'theme' | 'layoutMode' | 'splitRatio' | 'viewState'
+  | 'elements'
+  | 'pages'
+  | 'activePageId'
+  | 'documentTitle'
+  | 'theme'
+  | 'layoutMode'
+  | 'splitRatio'
+  | 'panelMode'
+  | 'docsNavigatorCollapsed'
+  | 'viewState'
 >): BoardSnapshot => ({
   elements: cloneData(state.elements),
   pages: cloneData(state.pages),
@@ -166,6 +181,8 @@ const createBoardSnapshot = (state: Pick<
   theme: state.theme,
   layoutMode: state.layoutMode,
   splitRatio: state.splitRatio,
+  panelMode: state.panelMode,
+  docsNavigatorCollapsed: state.docsNavigatorCollapsed,
   viewState: cloneData(state.viewState),
 });
 
@@ -179,6 +196,9 @@ interface AppStore {
   theme: 'light' | 'dark';
   layoutMode: 'horizontal' | 'vertical';
   splitRatio: number;
+  panelMode: 'split' | 'docs-only' | 'whiteboard-only';
+  docsNavigatorCollapsed: boolean;
+  activeSurface: 'document' | 'whiteboard';
 
   selectedIds: string[];
   activeTool: Tool;
@@ -226,6 +246,10 @@ interface AppStore {
   toggleTheme: () => void;
   setLayoutMode: (mode: 'horizontal' | 'vertical') => void;
   setSplitRatio: (ratio: number) => void;
+  setPanelMode: (mode: 'split' | 'docs-only' | 'whiteboard-only') => void;
+  setDocsNavigatorCollapsed: (collapsed: boolean) => void;
+  toggleDocsNavigatorCollapsed: () => void;
+  setActiveSurface: (surface: 'document' | 'whiteboard') => void;
 }
 
 export const useStore = create<AppStore>()(
@@ -240,6 +264,9 @@ export const useStore = create<AppStore>()(
       theme: 'light',
       layoutMode: 'horizontal',
       splitRatio: 0.28,
+      panelMode: 'split',
+      docsNavigatorCollapsed: false,
+      activeSurface: 'whiteboard',
 
       selectedIds: [],
       activeTool: 'select',
@@ -528,6 +555,8 @@ export const useStore = create<AppStore>()(
           theme: snapshot.theme,
           layoutMode: snapshot.layoutMode,
           splitRatio: snapshot.splitRatio,
+          panelMode: snapshot.panelMode,
+          docsNavigatorCollapsed: snapshot.docsNavigatorCollapsed,
           viewState: snapshot.viewState,
           selectedIds: [],
           activeTool: 'select',
@@ -549,6 +578,11 @@ export const useStore = create<AppStore>()(
           activePageId: blank.activePageId,
           documentTitle: blank.documentTitle,
           activeBoardId: null,
+          theme: blank.theme,
+          layoutMode: blank.layoutMode,
+          splitRatio: blank.splitRatio,
+          panelMode: blank.panelMode,
+          docsNavigatorCollapsed: blank.docsNavigatorCollapsed,
           selectedIds: [],
           activeTool: 'select',
           viewState: blank.viewState,
@@ -562,11 +596,16 @@ export const useStore = create<AppStore>()(
       toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
       setLayoutMode: (layoutMode) => set({ layoutMode }),
       setSplitRatio: (splitRatio) => set({ splitRatio }),
+      setPanelMode: (panelMode) => set({ panelMode }),
+      setDocsNavigatorCollapsed: (docsNavigatorCollapsed) => set({ docsNavigatorCollapsed }),
+      toggleDocsNavigatorCollapsed: () =>
+        set((state) => ({ docsNavigatorCollapsed: !state.docsNavigatorCollapsed })),
+      setActiveSurface: (activeSurface) => set({ activeSurface }),
     }),
     {
       name: APP_STORAGE_KEY,
       storage: createJSONStorage(() => fallbackStorage),
-      version: 4,
+      version: 5,
       migrate: (persistedState) => {
         const state = persistedState as Partial<AppStore> | undefined;
         const pages = state?.pages ? normalizePages(state.pages) : makeInitialPages();
@@ -580,6 +619,8 @@ export const useStore = create<AppStore>()(
           theme: state?.theme ?? 'light',
           layoutMode: state?.layoutMode ?? 'horizontal',
           splitRatio: state?.splitRatio ?? 0.28,
+          panelMode: state?.panelMode ?? 'split',
+          docsNavigatorCollapsed: state?.docsNavigatorCollapsed ?? false,
           viewState: state?.viewState ?? makeInitialViewState(),
         };
       },
@@ -593,6 +634,8 @@ export const useStore = create<AppStore>()(
         theme: state.theme,
         layoutMode: state.layoutMode,
         splitRatio: state.splitRatio,
+        panelMode: state.panelMode,
+        docsNavigatorCollapsed: state.docsNavigatorCollapsed,
         viewState: state.viewState,
       }),
     }
