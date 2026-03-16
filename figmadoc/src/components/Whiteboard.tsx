@@ -12,6 +12,13 @@ import { ShapeElementComponent } from './elements/ShapeElement';
 import { StickyElementComponent } from './elements/StickyElement';
 import { TextElementComponent } from './elements/TextElement';
 
+interface AlignmentGuide {
+  orientation: 'vertical' | 'horizontal';
+  position: number;
+  start: number;
+  end: number;
+}
+
 export function Whiteboard() {
   const {
     elements,
@@ -58,6 +65,7 @@ export function Whiteboard() {
     current: Point;
     additive: boolean;
   } | null>(null);
+  const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; elementId: string } | null>(null);
   const panStart = useRef<{ mx: number; my: number; vx: number; vy: number } | null>(null);
   const lastPointerCanvasRef = useRef<Point | null>(null);
@@ -628,9 +636,11 @@ export function Whiteboard() {
       historyPush();
       const startX = event.clientX;
       const startY = event.clientY;
+      const staticElements = state.elements.filter((candidate) => !dragIds.includes(candidate.id));
       const startPositions = new Map(
         draggableElements.map((candidate) => [candidate.id, { x: candidate.x, y: candidate.y }])
       );
+      const selectionBounds = getCombinedBounds(draggableElements);
       let frame = 0;
       let lastEvent: PointerEvent | null = null;
 
@@ -645,18 +655,20 @@ export function Whiteboard() {
 
           const dx = (lastEvent.clientX - startX) / viewState.zoom;
           const dy = (lastEvent.clientY - startY) / viewState.zoom;
+          const alignment = getAlignmentResult(selectionBounds, staticElements, dx, dy, 6 / viewState.zoom);
           updateElements(
             draggableElements.map((candidate) => {
               const initial = startPositions.get(candidate.id)!;
               return {
                 id: candidate.id,
                 updates: {
-                  x: initial.x + dx,
-                  y: initial.y + dy,
+                  x: initial.x + alignment.dx,
+                  y: initial.y + alignment.dy,
                 },
               };
             })
           );
+          setAlignmentGuides(alignment.guides);
           frame = 0;
         });
       };
@@ -667,6 +679,7 @@ export function Whiteboard() {
         }
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
+        setAlignmentGuides([]);
       };
 
       window.addEventListener('pointermove', onMove);
@@ -769,6 +782,23 @@ export function Whiteboard() {
               }}
             />
           )}
+
+          {alignmentGuides.map((guide, index) => (
+            <div
+              key={`${guide.orientation}-${guide.position}-${index}`}
+              style={{
+                position: 'absolute',
+                left: guide.orientation === 'vertical' ? guide.position : guide.start,
+                top: guide.orientation === 'vertical' ? guide.start : guide.position,
+                width: guide.orientation === 'vertical' ? 1 : guide.end - guide.start,
+                height: guide.orientation === 'vertical' ? guide.end - guide.start : 1,
+                background: 'var(--primary)',
+                boxShadow: '0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent)',
+                pointerEvents: 'none',
+                opacity: 0.9,
+              }}
+            />
+          ))}
 
           {penPoints && penPoints.length > 1 && (
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
@@ -1145,6 +1175,110 @@ function getElementBounds(element: WhiteboardElement) {
     top: element.y,
     right: element.x + element.width,
     bottom: element.y + element.height,
+  };
+}
+
+function getCombinedBounds(elements: WhiteboardElement[]) {
+  const bounds = elements.map(getElementBounds);
+  return {
+    left: Math.min(...bounds.map((bound) => bound.left)),
+    top: Math.min(...bounds.map((bound) => bound.top)),
+    right: Math.max(...bounds.map((bound) => bound.right)),
+    bottom: Math.max(...bounds.map((bound) => bound.bottom)),
+  };
+}
+
+function offsetBounds(
+  bounds: { left: number; top: number; right: number; bottom: number },
+  dx: number,
+  dy: number
+) {
+  return {
+    left: bounds.left + dx,
+    top: bounds.top + dy,
+    right: bounds.right + dx,
+    bottom: bounds.bottom + dy,
+  };
+}
+
+function getAlignmentResult(
+  selectionBounds: { left: number; top: number; right: number; bottom: number },
+  staticElements: WhiteboardElement[],
+  rawDx: number,
+  rawDy: number,
+  threshold: number
+) {
+  let snappedDx = rawDx;
+  let snappedDy = rawDy;
+  let verticalGuide: AlignmentGuide | null = null;
+  let horizontalGuide: AlignmentGuide | null = null;
+  let bestVerticalDelta = threshold + 1;
+  let bestHorizontalDelta = threshold + 1;
+
+  const movedBounds = offsetBounds(selectionBounds, rawDx, rawDy);
+  const movingXPoints = [
+    movedBounds.left,
+    (movedBounds.left + movedBounds.right) / 2,
+    movedBounds.right,
+  ];
+  const movingYPoints = [
+    movedBounds.top,
+    (movedBounds.top + movedBounds.bottom) / 2,
+    movedBounds.bottom,
+  ];
+
+  for (const element of staticElements) {
+    const otherBounds = getElementBounds(element);
+    const otherXPoints = [
+      otherBounds.left,
+      (otherBounds.left + otherBounds.right) / 2,
+      otherBounds.right,
+    ];
+    const otherYPoints = [
+      otherBounds.top,
+      (otherBounds.top + otherBounds.bottom) / 2,
+      otherBounds.bottom,
+    ];
+
+    for (const movingPoint of movingXPoints) {
+      for (const otherPoint of otherXPoints) {
+        const delta = otherPoint - movingPoint;
+        if (Math.abs(delta) <= threshold && Math.abs(delta) < bestVerticalDelta) {
+          bestVerticalDelta = Math.abs(delta);
+          snappedDx = rawDx + delta;
+          const snappedBounds = offsetBounds(selectionBounds, snappedDx, rawDy);
+          verticalGuide = {
+            orientation: 'vertical',
+            position: otherPoint,
+            start: Math.min(snappedBounds.top, otherBounds.top) - 24,
+            end: Math.max(snappedBounds.bottom, otherBounds.bottom) + 24,
+          };
+        }
+      }
+    }
+
+    for (const movingPoint of movingYPoints) {
+      for (const otherPoint of otherYPoints) {
+        const delta = otherPoint - movingPoint;
+        if (Math.abs(delta) <= threshold && Math.abs(delta) < bestHorizontalDelta) {
+          bestHorizontalDelta = Math.abs(delta);
+          snappedDy = rawDy + delta;
+          const snappedBounds = offsetBounds(selectionBounds, snappedDx, snappedDy);
+          horizontalGuide = {
+            orientation: 'horizontal',
+            position: otherPoint,
+            start: Math.min(snappedBounds.left, otherBounds.left) - 24,
+            end: Math.max(snappedBounds.right, otherBounds.right) + 24,
+          };
+        }
+      }
+    }
+  }
+
+  return {
+    dx: snappedDx,
+    dy: snappedDy,
+    guides: [verticalGuide, horizontalGuide].filter((guide): guide is AlignmentGuide => guide != null),
   };
 }
 
