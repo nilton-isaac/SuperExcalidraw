@@ -82,6 +82,7 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
             color,
             fontFamily,
             lineHeight: 1.4,
+            whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             padding: 2,
             textAlign,

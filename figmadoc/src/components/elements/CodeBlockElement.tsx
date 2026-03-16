@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { CodeElement } from '../../types';
 import { useStore } from '../../store/useStore';
 import { createSandboxIframe } from '../../lib/sandbox';
@@ -32,6 +33,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
   const [fullscreenBounds, setFullscreenBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const previousFullscreenRef = useRef(false);
 
   const update = (field: 'html' | 'css' | 'js', value: string) =>
     updateElement(element.id, {
@@ -86,7 +88,16 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
     }
   }, [runtime, tab]);
 
-  useEffect(() => () => cleanupRef.current?.(), []);
+  useEffect(() => {
+    return () => cleanupRef.current?.();
+  }, []);
+
+  useEffect(() => {
+    if (previousFullscreenRef.current !== fullscreen && tab === 'preview') {
+      requestAnimationFrame(() => run());
+    }
+    previousFullscreenRef.current = fullscreen;
+  }, [fullscreen, run, tab]);
 
   useEffect(() => {
     if (!fullscreen) {
@@ -124,62 +135,46 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
     };
   }, [fullscreen]);
 
-  const box: CSSProperties = fullscreen
-    ? {
-        position: 'fixed',
-        top: fullscreenBounds?.top ?? 20,
-        left: fullscreenBounds?.left ?? 20,
-        width: fullscreenBounds?.width ?? 'calc(100vw - 40px)',
-        height: fullscreenBounds?.height ?? 'calc(100vh - 40px)',
-        zIndex: 9999,
-        borderRadius: 18,
-      }
-    : {
-        position: 'absolute',
-        left: element.x,
-        top: element.y,
-        width: element.width,
-        height: element.height,
-        zIndex: element.zIndex,
-        transform: `rotate(${element.rotation ?? 0}deg)`,
-        transformOrigin: 'center center',
-      };
+  const inlineBox: CSSProperties = {
+    position: 'absolute',
+    left: element.x,
+    top: element.y,
+    width: element.width,
+    height: element.height,
+    zIndex: element.zIndex,
+    transform: `rotate(${element.rotation ?? 0}deg)`,
+    transformOrigin: 'center center',
+  };
 
-  return (
-    <>
-      {fullscreen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: fullscreenBounds?.top ?? 0,
-            left: fullscreenBounds?.left ?? 0,
-            width: fullscreenBounds?.width ?? '100vw',
-            height: fullscreenBounds?.height ?? '100vh',
-            background: 'var(--backdrop)',
-            borderRadius: 18,
-            zIndex: 9998,
-          }}
-          onPointerDown={() => setFullscreen(false)}
-        />
-      )}
+  const modalBox: CSSProperties = {
+    position: 'fixed',
+    top: (fullscreenBounds?.top ?? 0) + 16,
+    left: (fullscreenBounds?.left ?? 0) + 16,
+    width: Math.max(320, (fullscreenBounds?.width ?? window.innerWidth) - 32),
+    height: Math.max(240, (fullscreenBounds?.height ?? window.innerHeight) - 32),
+    zIndex: 10000,
+    borderRadius: 20,
+  };
 
+  const renderPanel = (mode: 'inline' | 'modal') => (
       <div
         style={{
-          ...box,
+          ...(mode === 'modal' ? modalBox : inlineBox),
           background: 'var(--code-bg)',
           color: 'var(--code-fg)',
           border: '1px solid rgba(255,255,255,0.12)',
           overflow: 'hidden',
-          boxShadow: selected || fullscreen
+          boxShadow: selected || mode === 'modal'
             ? '0 0 0 2px var(--primary), 0 16px 40px rgba(0,0,0,0.35)'
             : '0 12px 28px rgba(0,0,0,0.24)',
           display: 'flex',
           flexDirection: 'column',
-          cursor: fullscreen ? 'default' : 'move',
+          cursor: mode === 'modal' ? 'default' : 'move',
           userSelect: 'none',
-          transition: fullscreen ? 'none' : undefined,
+          transition: mode === 'modal' ? 'none' : undefined,
         }}
-        onPointerDown={fullscreen ? undefined : onPointerDown}
+        onPointerDown={mode === 'modal' ? (event) => event.stopPropagation() : onPointerDown}
+        onWheel={(event) => event.stopPropagation()}
       >
         <div
           style={{
@@ -291,7 +286,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
             <button
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => setFullscreen((value) => !value)}
-              title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              title={mode === 'modal' ? 'Close modal' : 'Open modal'}
               style={{
                 width: 28,
                 height: 28,
@@ -305,7 +300,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
                 justifyContent: 'center',
               }}
             >
-              <Icon name={fullscreen ? 'fullscreen_exit' : 'fullscreen'} size={16} />
+              <Icon name={mode === 'modal' ? 'fullscreen_exit' : 'fullscreen'} size={16} />
             </button>
           </div>
         </div>
@@ -331,6 +326,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
                   });
                 }
               }}
+              onWheel={(event) => event.stopPropagation()}
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -357,6 +353,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
               background: '#ffffff',
               overflow: 'hidden',
             }}
+            onWheel={(event) => event.stopPropagation()}
           />
 
           {logs.length > 0 && (
@@ -364,11 +361,12 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
               style={{
                 borderTop: '1px solid rgba(255,255,255,0.1)',
                 background: 'rgba(255,255,255,0.04)',
-                maxHeight: fullscreen ? 220 : 120,
+                maxHeight: mode === 'modal' ? 220 : 120,
                 overflowY: 'auto',
                 padding: '8px 12px',
                 flexShrink: 0,
               }}
+              onWheel={(event) => event.stopPropagation()}
             >
               <div
                 style={{
@@ -407,7 +405,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
           )}
         </div>
 
-        {!fullscreen && selected && (
+        {mode !== 'modal' && selected && (
           <ElementResizeHandles
             element={element}
             zoom={zoom}
@@ -417,6 +415,31 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
           />
         )}
       </div>
+  );
+
+  return (
+    <>
+      {!fullscreen && renderPanel('inline')}
+
+      {fullscreen && fullscreenBounds && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: fullscreenBounds.top,
+              left: fullscreenBounds.left,
+              width: fullscreenBounds.width,
+              height: fullscreenBounds.height,
+              background: 'var(--backdrop)',
+              borderRadius: 18,
+              zIndex: 9998,
+            }}
+            onPointerDown={() => setFullscreen(false)}
+          />
+          {renderPanel('modal')}
+        </>,
+        document.body
+      )}
     </>
   );
 }

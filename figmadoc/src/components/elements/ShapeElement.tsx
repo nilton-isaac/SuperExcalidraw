@@ -61,7 +61,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   const innerStyle: CSSProperties = {
     width: '100%',
     height: '100%',
-    background: fillColor,
+    background: fillColor === 'transparent' ? 'transparent' : fillColor,
     border: `2px solid ${strokeColor}`,
     display: 'flex',
     alignItems: 'center',
@@ -109,6 +109,8 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
               fontWeight,
               color: textColor,
               transform: shapeType === 'diamond' ? 'rotate(-45deg)' : undefined,
+              lineHeight: 1.4,
+              whiteSpace: 'pre-wrap',
             }}
           />
         ) : (
@@ -120,6 +122,8 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
               padding: 4,
               textAlign,
               color: textColor,
+              lineHeight: 1.4,
+              whiteSpace: 'pre-wrap',
             }}
           >
             {text || <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Double-click</span>}

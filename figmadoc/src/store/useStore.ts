@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { DocPage, Tool, ViewState, WhiteboardElement } from '../types';
+import type { DocPage, Point, Tool, ViewState, WhiteboardElement } from '../types';
 import {
   cloneData,
   cloneElementsForPaste,
@@ -214,11 +214,13 @@ interface AppStore {
 
   addElement: (element: Omit<WhiteboardElement, 'id' | 'zIndex'>) => string;
   updateElement: (id: string, updates: Partial<WhiteboardElement>) => void;
+  updateElements: (updates: Array<{ id: string; updates: Partial<WhiteboardElement> }>) => void;
   deleteElement: (id: string) => void;
   deleteSelectedElements: () => void;
   duplicateElement: (id: string) => void;
 
   selectElement: (id: string, additive?: boolean) => void;
+  setSelectedIds: (ids: string[]) => void;
   clearSelection: () => void;
   selectAll: () => void;
 
@@ -227,7 +229,7 @@ interface AppStore {
   toggleLock: (id: string) => void;
 
   copySelected: () => Promise<void>;
-  paste: (source?: WhiteboardElement[]) => void;
+  paste: (source?: WhiteboardElement[], anchor?: Point) => void;
 
   setActiveTool: (tool: Tool) => void;
   setViewState: (vs: Partial<ViewState>) => void;
@@ -327,6 +329,18 @@ export const useStore = create<AppStore>()(
           ),
         })),
 
+      updateElements: (updates) =>
+        set((state) => {
+          if (updates.length === 0) return state;
+          const updateMap = new Map(updates.map((entry) => [entry.id, entry.updates]));
+          return {
+            elements: state.elements.map((element) => {
+              const patch = updateMap.get(element.id);
+              return patch ? ({ ...element, ...patch } as WhiteboardElement) : element;
+            }),
+          };
+        }),
+
       deleteElement: (id) => {
         get().historyPush();
         set((state) => ({
@@ -381,6 +395,8 @@ export const useStore = create<AppStore>()(
             : nextIds,
         }));
       },
+
+      setSelectedIds: (selectedIds) => set({ selectedIds: [...new Set(selectedIds)] }),
 
       clearSelection: () => set({ selectedIds: [] }),
 
@@ -437,13 +453,13 @@ export const useStore = create<AppStore>()(
         }
       },
 
-      paste: (source) => {
+      paste: (source, anchor) => {
         const { clipboard, elements } = get();
         const sourceElements = source && source.length > 0 ? source : clipboard;
         if (sourceElements.length === 0) return;
         get().historyPush();
         const maxZIndex = elements.reduce((max, current) => Math.max(max, current.zIndex), 0);
-        const pasted = cloneElementsForPaste(sourceElements, maxZIndex);
+        const pasted = cloneElementsForPaste(sourceElements, maxZIndex, anchor ? { anchor } : undefined);
 
         set((state) => ({
           elements: [...state.elements, ...pasted],

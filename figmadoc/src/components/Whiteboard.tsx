@@ -21,10 +21,11 @@ export function Whiteboard() {
     selectElement,
     clearSelection,
     addElement,
-    updateElement,
+    updateElements,
     deleteSelectedElements,
     duplicateElement,
     selectAll,
+    setSelectedIds,
     setViewState,
     setActiveTool,
     groupSelected,
@@ -44,8 +45,14 @@ export function Whiteboard() {
   const [isSpaceDown, setIsSpaceDown] = useState(false);
   const [drawingArrow, setDrawingArrow] = useState<Point[] | null>(null);
   const [penPoints, setPenPoints] = useState<Point[] | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{
+    start: Point;
+    current: Point;
+    additive: boolean;
+  } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; elementId: string } | null>(null);
   const panStart = useRef<{ mx: number; my: number; vx: number; vy: number } | null>(null);
+  const lastPointerCanvasRef = useRef<Point | null>(null);
 
   const toCanvas = useCallback(
     (screenX: number, screenY: number): Point => {
@@ -63,6 +70,10 @@ export function Whiteboard() {
     if (!rect) return { x: 240, y: 180 };
     return toCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }, [toCanvas]);
+
+  const getPasteAnchor = useCallback((): Point => {
+    return lastPointerCanvasRef.current ?? getViewportCenter();
+  }, [getViewportCenter]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -172,12 +183,11 @@ export function Whiteboard() {
     duplicateElement,
     setActiveTool,
     copySelected,
-    paste,
-    groupSelected,
-    ungroupSelected,
-    toggleLock,
-    undo,
-    redo,
+        groupSelected,
+        ungroupSelected,
+        toggleLock,
+        undo,
+        redo,
   ]);
 
   useEffect(() => {
@@ -190,18 +200,18 @@ export function Whiteboard() {
 
       const clipboardData = event.clipboardData;
       if (!clipboardData) return;
+      const anchor = getPasteAnchor();
 
       const imageItem = Array.from(clipboardData.items).find((item) => item.type.startsWith('image/'));
       if (imageItem) {
         const file = imageItem.getAsFile();
         if (!file) return;
         event.preventDefault();
-        const center = getViewportCenter();
         const src = await readFileAsDataURL(file);
         const id = addElement({
           type: 'image',
-          x: center.x - 180,
-          y: center.y - 120,
+          x: anchor.x,
+          y: anchor.y,
           width: 360,
           height: 240,
           properties: {
@@ -216,26 +226,25 @@ export function Whiteboard() {
 
       const text = clipboardData.getData('text/plain');
       if (!text.trim()) {
-        paste();
+        paste(undefined, anchor);
         return;
       }
 
       event.preventDefault();
       const parsedElements = parseElementsFromClipboard(text);
       if (parsedElements && parsedElements.length > 0) {
-        paste(parsedElements);
+        paste(parsedElements, anchor);
         return;
       }
 
-      const center = getViewportCenter();
       const lines = text.split(/\r?\n/);
       const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
       const width = Math.max(180, Math.min(460, longestLine * 8 + 32));
       const height = Math.max(42, Math.min(320, lines.length * 26 + 20));
       const id = addElement({
         type: 'text',
-        x: center.x - width / 2,
-        y: center.y - height / 2,
+        x: anchor.x,
+        y: anchor.y,
         width,
         height,
         properties: {
@@ -252,7 +261,7 @@ export function Whiteboard() {
 
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [activeSurface, addElement, getViewportCenter, paste, selectElement]);
+  }, [activeSurface, addElement, getPasteAnchor, paste, selectElement]);
 
   useEffect(() => {
     const element = wrapperRef.current;
@@ -297,6 +306,7 @@ export function Whiteboard() {
       if (event.button !== 0) return;
       setContextMenu(null);
       const point = toCanvas(event.clientX, event.clientY);
+      lastPointerCanvasRef.current = point;
 
       if (isPanMode) {
         setIsPanning(true);
@@ -305,8 +315,19 @@ export function Whiteboard() {
         return;
       }
 
+      if (activeTool === 'select') {
+        const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+        if (!additive) clearSelection();
+        setSelectionBox({
+          start: point,
+          current: point,
+          additive,
+        });
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        return;
+      }
+
       clearSelection();
-      if (activeTool === 'select') return;
 
       if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'diamond') {
         const id = addElement({
@@ -444,6 +465,9 @@ export function Whiteboard() {
 
   const onCanvasPointerMove = useCallback(
     (event: React.PointerEvent) => {
+      const point = toCanvas(event.clientX, event.clientY);
+      lastPointerCanvasRef.current = point;
+
       if (panStart.current) {
         setViewState({
           x: panStart.current.vx + (event.clientX - panStart.current.mx),
@@ -452,16 +476,21 @@ export function Whiteboard() {
         return;
       }
 
+      if (selectionBox) {
+        setSelectionBox((previous) => (previous ? { ...previous, current: point } : previous));
+        return;
+      }
+
       if (drawingArrow) {
-        setDrawingArrow([drawingArrow[0], toCanvas(event.clientX, event.clientY)]);
+        setDrawingArrow([drawingArrow[0], point]);
         return;
       }
 
       if (penPoints) {
-        setPenPoints((previous) => (previous ? [...previous, toCanvas(event.clientX, event.clientY)] : []));
+        setPenPoints((previous) => (previous ? [...previous, point] : []));
       }
     },
-    [drawingArrow, penPoints, toCanvas, setViewState]
+    [drawingArrow, penPoints, selectionBox, toCanvas, setViewState]
   );
 
   const onCanvasPointerUp = useCallback(
@@ -503,10 +532,21 @@ export function Whiteboard() {
         return;
       }
 
+      if (selectionBox) {
+        const idsInBox = getElementIdsInSelectionBox(elements, selectionBox);
+        if (selectionBox.additive) {
+          setSelectedIds([...selectedIds, ...idsInBox]);
+        } else {
+          setSelectedIds(idsInBox);
+        }
+        setSelectionBox(null);
+        return;
+      }
+
       setPenPoints(null);
       setDrawingArrow(null);
     },
-    [drawingArrow, penPoints, addElement, setActiveTool]
+    [drawingArrow, elements, penPoints, selectedIds, selectionBox, addElement, setActiveTool, setSelectedIds]
   );
 
   const onElementPointerDown = useCallback(
@@ -514,6 +554,7 @@ export function Whiteboard() {
       if (event.button !== 0) return;
       event.stopPropagation();
       setContextMenu(null);
+      lastPointerCanvasRef.current = toCanvas(event.clientX, event.clientY);
 
       if (activeTool === 'eraser') {
         useStore.getState().deleteElement(element.id);
@@ -523,23 +564,66 @@ export function Whiteboard() {
       if (activeTool !== 'select') return;
 
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-      selectElement(element.id, additive);
-      if (element.locked) return;
+      if (additive) {
+        selectElement(element.id, true);
+        return;
+      }
+
+      const state = useStore.getState();
+      const directSelectionIds = element.groupId
+        ? state.elements.filter((candidate) => candidate.groupId === element.groupId).map((candidate) => candidate.id)
+        : [element.id];
+      const dragIds = state.selectedIds.includes(element.id) ? state.selectedIds : directSelectionIds;
+
+      if (!state.selectedIds.includes(element.id)) {
+        setSelectedIds(directSelectionIds);
+      }
+
+      const draggableElements = state.elements.filter(
+        (candidate) => dragIds.includes(candidate.id) && !candidate.locked
+      );
+      if (draggableElements.length === 0) return;
 
       historyPush();
       const startX = event.clientX;
       const startY = event.clientY;
-      const startElementX = element.x;
-      const startElementY = element.y;
+      const startPositions = new Map(
+        draggableElements.map((candidate) => [candidate.id, { x: candidate.x, y: candidate.y }])
+      );
+      let frame = 0;
+      let lastEvent: PointerEvent | null = null;
 
       const onMove = (nextEvent: PointerEvent) => {
-        updateElement(element.id, {
-          x: startElementX + (nextEvent.clientX - startX) / viewState.zoom,
-          y: startElementY + (nextEvent.clientY - startY) / viewState.zoom,
+        lastEvent = nextEvent;
+        if (frame) return;
+        frame = window.requestAnimationFrame(() => {
+          if (!lastEvent) {
+            frame = 0;
+            return;
+          }
+
+          const dx = (lastEvent.clientX - startX) / viewState.zoom;
+          const dy = (lastEvent.clientY - startY) / viewState.zoom;
+          updateElements(
+            draggableElements.map((candidate) => {
+              const initial = startPositions.get(candidate.id)!;
+              return {
+                id: candidate.id,
+                updates: {
+                  x: initial.x + dx,
+                  y: initial.y + dy,
+                },
+              };
+            })
+          );
+          frame = 0;
         });
       };
 
       const onUp = () => {
+        if (frame) {
+          window.cancelAnimationFrame(frame);
+        }
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
       };
@@ -547,7 +631,7 @@ export function Whiteboard() {
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     },
-    [activeTool, viewState.zoom, selectElement, updateElement, historyPush]
+    [activeTool, historyPush, selectElement, setSelectedIds, toCanvas, updateElements, viewState.zoom]
   );
 
   const onElementContextMenu = useCallback(
@@ -676,6 +760,22 @@ export function Whiteboard() {
                 markerEnd="url(#arrow-preview)"
               />
             </svg>
+          )}
+
+          {selectionBox && (
+            <div
+              style={{
+                position: 'absolute',
+                left: Math.min(selectionBox.start.x, selectionBox.current.x),
+                top: Math.min(selectionBox.start.y, selectionBox.current.y),
+                width: Math.abs(selectionBox.current.x - selectionBox.start.x),
+                height: Math.abs(selectionBox.current.y - selectionBox.start.y),
+                border: '1.5px dashed var(--primary)',
+                background: 'color-mix(in srgb, var(--primary) 12%, transparent)',
+                borderRadius: 8,
+                pointerEvents: 'none',
+              }}
+            />
           )}
 
           {[...elements].sort((a, b) => a.zIndex - b.zIndex).map((element) => {
@@ -931,6 +1031,55 @@ function readFileAsDataURL(file: File) {
   });
 }
 
+function getElementIdsInSelectionBox(
+  elements: WhiteboardElement[],
+  selectionBox: { start: Point; current: Point }
+) {
+  const box = {
+    left: Math.min(selectionBox.start.x, selectionBox.current.x),
+    top: Math.min(selectionBox.start.y, selectionBox.current.y),
+    right: Math.max(selectionBox.start.x, selectionBox.current.x),
+    bottom: Math.max(selectionBox.start.y, selectionBox.current.y),
+  };
+
+  if (box.right - box.left < 4 && box.bottom - box.top < 4) {
+    return [];
+  }
+
+  return elements
+    .filter((element) => intersectsBox(box, getElementBounds(element)))
+    .map((element) => element.id);
+}
+
+function getElementBounds(element: WhiteboardElement) {
+  if (element.type === 'arrow' || element.type === 'pen') {
+    const points = element.properties.points;
+    const allX = points.map((point) => point.x + element.x);
+    const allY = points.map((point) => point.y + element.y);
+
+    return {
+      left: Math.min(...allX),
+      top: Math.min(...allY),
+      right: Math.max(...allX),
+      bottom: Math.max(...allY),
+    };
+  }
+
+  return {
+    left: element.x,
+    top: element.y,
+    right: element.x + element.width,
+    bottom: element.y + element.height,
+  };
+}
+
+function intersectsBox(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number }
+) {
+  return a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top;
+}
+
 function PenSVG({
   element,
   selected,
@@ -942,7 +1091,9 @@ function PenSVG({
 }) {
   const { points, color, strokeWidth } = element.properties;
   if (!points || points.length < 2) return null;
-  const path = points.map((point: Point, index: number) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+  const path = points
+    .map((point: Point, index: number) => `${index === 0 ? 'M' : 'L'} ${point.x + element.x} ${point.y + element.y}`)
+    .join(' ');
 
   return (
     <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>

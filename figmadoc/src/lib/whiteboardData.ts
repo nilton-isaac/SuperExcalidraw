@@ -26,9 +26,16 @@ export function parseElementsFromClipboard(value: string) {
 export function cloneElementsForPaste(
   elements: WhiteboardElement[],
   maxZIndex: number,
-  offset = 24
+  options?: {
+    offset?: number;
+    anchor?: { x: number; y: number };
+  }
 ) {
+  const offset = options?.offset ?? 24;
+  const anchor = options?.anchor;
   const groupIdMap = new Map<string, string>();
+  const minX = Math.min(...elements.map((element) => element.x));
+  const minY = Math.min(...elements.map((element) => element.y));
 
   return cloneData(elements).map((element, index) => {
     const nextGroupId = element.groupId
@@ -42,8 +49,8 @@ export function cloneElementsForPaste(
     return {
       ...element,
       id: uuidv4(),
-      x: element.x + offset,
-      y: element.y + offset,
+      x: anchor ? anchor.x + (element.x - minX) : element.x + offset,
+      y: anchor ? anchor.y + (element.y - minY) : element.y + offset,
       zIndex: maxZIndex + index + 1,
       groupId: nextGroupId,
       locked: false,

@@ -69,11 +69,26 @@ function ShapeInspector({
   element: ShapeElement;
   updateElement: (id: string, updates: Partial<WhiteboardElement>) => void;
 }) {
+  const fillMode = (element.properties.fillColor ?? '#ffffff') === 'transparent' ? 'empty' : 'solid';
+
   return (
     <>
+      <FieldLabel>Fill mode</FieldLabel>
+      <SegmentedControl
+        value={fillMode}
+        options={[
+          { value: 'solid', label: 'Solid' },
+          { value: 'empty', label: 'Empty' },
+        ]}
+        onChange={(value) =>
+          patchProperties(element, updateElement, {
+            fillColor: value === 'empty' ? 'transparent' : element.properties.fillColor ?? '#ffffff',
+          })
+        }
+      />
       <ColorField
         label="Fill"
-        value={element.properties.fillColor ?? '#ffffff'}
+        value={element.properties.fillColor === 'transparent' ? '#ffffff' : element.properties.fillColor ?? '#ffffff'}
         onChange={(value) => patchProperties(element, updateElement, { fillColor: value })}
       />
       <ColorField
