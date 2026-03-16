@@ -38,11 +38,19 @@ export function Whiteboard() {
     redo,
     activeSurface,
     setActiveSurface,
+    toolDefaults,
+    bringSelectionToFront,
+    sendSelectionToBack,
   } = useStore();
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [isSpaceDown, setIsSpaceDown] = useState(false);
+  const [drawingShape, setDrawingShape] = useState<{
+    shapeType: 'rectangle' | 'circle' | 'diamond';
+    start: Point;
+    current: Point;
+  } | null>(null);
   const [drawingArrow, setDrawingArrow] = useState<Point[] | null>(null);
   const [penPoints, setPenPoints] = useState<Point[] | null>(null);
   const [selectionBox, setSelectionBox] = useState<{
@@ -330,32 +338,17 @@ export function Whiteboard() {
       clearSelection();
 
       if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'diamond') {
-        const id = addElement({
-          type: 'shape',
-          x: point.x - 70,
-          y: point.y - 35,
-          width: 140,
-          height: 70,
-          properties: {
-            shapeType:
-              activeTool === 'rectangle'
-                ? 'rectangle'
-                : activeTool === 'circle'
-                  ? 'circle'
-                  : 'diamond',
-            text: '',
-            strokeColor: '#000000',
-            fillColor:
-              activeTool === 'diamond' ? '#e5e5e5' : activeTool === 'circle' ? '#f2f2f2' : '#ffffff',
-            textColor: '#000000',
-            fontSize: 14,
-            fontFamily: 'Inter',
-            fontWeight: 'normal',
-            textAlign: 'center',
-          },
+        setDrawingShape({
+          shapeType:
+            activeTool === 'rectangle'
+              ? 'rectangle'
+              : activeTool === 'circle'
+                ? 'circle'
+                : 'diamond',
+          start: point,
+          current: point,
         });
-        selectElement(id);
-        setActiveTool('select');
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         return;
       }
 
@@ -368,11 +361,11 @@ export function Whiteboard() {
           height: 120,
           properties: {
             text: '',
-            color: '#f2f2f2',
-            textColor: '#000000',
-            fontSize: 14,
-            fontFamily: 'Inter',
-            textAlign: 'left',
+            color: toolDefaults.sticky.color,
+            textColor: toolDefaults.sticky.textColor,
+            fontSize: toolDefaults.sticky.fontSize,
+            fontFamily: toolDefaults.sticky.fontFamily,
+            textAlign: toolDefaults.sticky.textAlign,
           },
         });
         selectElement(id);
@@ -409,11 +402,11 @@ export function Whiteboard() {
           height: 36,
           properties: {
             text: 'Text',
-            fontSize: 18,
-            fontWeight: 'normal',
-            color: '#000000',
-            fontFamily: 'Inter',
-            textAlign: 'left',
+            fontSize: toolDefaults.text.fontSize,
+            fontWeight: toolDefaults.text.fontWeight,
+            color: toolDefaults.text.color,
+            fontFamily: toolDefaults.text.fontFamily,
+            textAlign: toolDefaults.text.textAlign,
           },
         });
         selectElement(id);
@@ -460,7 +453,7 @@ export function Whiteboard() {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       }
     },
-    [activeTool, isPanMode, viewState, toCanvas, addElement, selectElement, clearSelection, setActiveTool]
+    [activeTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, setActiveTool, toolDefaults]
   );
 
   const onCanvasPointerMove = useCallback(
@@ -481,6 +474,11 @@ export function Whiteboard() {
         return;
       }
 
+      if (drawingShape) {
+        setDrawingShape((previous) => (previous ? { ...previous, current: point } : previous));
+        return;
+      }
+
       if (drawingArrow) {
         setDrawingArrow([drawingArrow[0], point]);
         return;
@@ -490,7 +488,7 @@ export function Whiteboard() {
         setPenPoints((previous) => (previous ? [...previous, point] : []));
       }
     },
-    [drawingArrow, penPoints, selectionBox, toCanvas, setViewState]
+    [drawingArrow, drawingShape, penPoints, selectionBox, toCanvas, setViewState]
   );
 
   const onCanvasPointerUp = useCallback(
@@ -498,6 +496,40 @@ export function Whiteboard() {
       if (panStart.current) {
         setIsPanning(false);
         panStart.current = null;
+        return;
+      }
+
+      if (drawingShape) {
+        const left = Math.min(drawingShape.start.x, drawingShape.current.x);
+        const top = Math.min(drawingShape.start.y, drawingShape.current.y);
+        const rawWidth = Math.abs(drawingShape.current.x - drawingShape.start.x);
+        const rawHeight = Math.abs(drawingShape.current.y - drawingShape.start.y);
+        const width = rawWidth < 8 ? 140 : rawWidth;
+        const height = rawHeight < 8 ? 72 : rawHeight;
+        const x = rawWidth < 8 ? drawingShape.start.x - width / 2 : left;
+        const y = rawHeight < 8 ? drawingShape.start.y - height / 2 : top;
+
+        const id = addElement({
+          type: 'shape',
+          x,
+          y,
+          width,
+          height,
+          properties: {
+            shapeType: drawingShape.shapeType,
+            text: '',
+            fillColor: toolDefaults.shape.fillColor,
+            strokeColor: toolDefaults.shape.strokeColor,
+            textColor: toolDefaults.shape.textColor,
+            fontSize: toolDefaults.shape.fontSize,
+            fontFamily: toolDefaults.shape.fontFamily,
+            fontWeight: toolDefaults.shape.fontWeight,
+            textAlign: toolDefaults.shape.textAlign,
+          },
+        });
+        setDrawingShape(null);
+        selectElement(id);
+        setActiveTool('select');
         return;
       }
 
@@ -510,7 +542,11 @@ export function Whiteboard() {
             y: 0,
             width: 0,
             height: 0,
-            properties: { points: drawingArrow, color: '#000000', strokeWidth: 2 },
+            properties: {
+              points: drawingArrow,
+              color: toolDefaults.arrow.color,
+              strokeWidth: toolDefaults.arrow.strokeWidth,
+            },
           });
         }
         setDrawingArrow(null);
@@ -525,7 +561,11 @@ export function Whiteboard() {
           y: 0,
           width: 0,
           height: 0,
-          properties: { points: penPoints, color: '#000000', strokeWidth: 2 },
+          properties: {
+            points: penPoints,
+            color: toolDefaults.pen.color,
+            strokeWidth: toolDefaults.pen.strokeWidth,
+          },
         });
         setPenPoints(null);
         setActiveTool('select');
@@ -545,8 +585,9 @@ export function Whiteboard() {
 
       setPenPoints(null);
       setDrawingArrow(null);
+      setDrawingShape(null);
     },
-    [drawingArrow, elements, penPoints, selectedIds, selectionBox, addElement, setActiveTool, setSelectedIds]
+    [drawingArrow, drawingShape, elements, penPoints, selectedIds, selectionBox, addElement, selectElement, setActiveTool, setSelectedIds, toolDefaults]
   );
 
   const onElementPointerDown = useCallback(
@@ -762,6 +803,30 @@ export function Whiteboard() {
             </svg>
           )}
 
+          {drawingShape && (
+            <div
+              style={{
+                position: 'absolute',
+                left: Math.min(drawingShape.start.x, drawingShape.current.x),
+                top: Math.min(drawingShape.start.y, drawingShape.current.y),
+                width: Math.max(4, Math.abs(drawingShape.current.x - drawingShape.start.x)),
+                height: Math.max(4, Math.abs(drawingShape.current.y - drawingShape.start.y)),
+                border: `2px solid ${toolDefaults.shape.strokeColor}`,
+                background: toolDefaults.shape.fillColor === 'transparent' ? 'transparent' : toolDefaults.shape.fillColor,
+                borderRadius:
+                  drawingShape.shapeType === 'circle'
+                    ? '50%'
+                    : drawingShape.shapeType === 'rectangle'
+                      ? 10
+                      : 0,
+                transform: drawingShape.shapeType === 'diamond' ? 'rotate(45deg)' : undefined,
+                transformOrigin: 'center center',
+                opacity: 0.65,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
           {selectionBox && (
             <div
               style={{
@@ -951,6 +1016,16 @@ export function Whiteboard() {
                 action: () => toggleLock(contextMenu.elementId),
               },
               {
+                icon: 'vertical_align_top',
+                label: 'Bring to front',
+                action: bringSelectionToFront,
+              },
+              {
+                icon: 'vertical_align_bottom',
+                label: 'Send to back',
+                action: sendSelectionToBack,
+              },
+              {
                 icon: 'layers',
                 label: 'Group selection',
                 action: groupSelected,
@@ -1047,7 +1122,7 @@ function getElementIdsInSelectionBox(
   }
 
   return elements
-    .filter((element) => intersectsBox(box, getElementBounds(element)))
+    .filter((element) => !element.locked && intersectsBox(box, getElementBounds(element)))
     .map((element) => element.id);
 }
 

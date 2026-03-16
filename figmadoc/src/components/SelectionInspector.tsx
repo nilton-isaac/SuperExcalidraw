@@ -17,9 +17,147 @@ const FONT_OPTIONS = ['Inter', 'Space Grotesk', 'Merriweather', 'JetBrains Mono'
 const COLOR_SWATCHES = ['#000000', '#ffffff', '#6b7280', '#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea'];
 
 export function SelectionInspector() {
-  const { elements, selectedIds, updateElement } = useStore();
+  const {
+    elements,
+    selectedIds,
+    activeTool,
+    toolDefaults,
+    updateElement,
+    updateToolDefaults,
+    bringSelectionToFront,
+    sendSelectionToBack,
+  } = useStore();
 
-  if (selectedIds.length === 0) return null;
+  if (selectedIds.length === 0) {
+    if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'diamond') {
+      const fillMode = toolDefaults.shape.fillColor === 'transparent' ? 'empty' : 'solid';
+      return (
+        <InspectorShell icon="format_shapes" title="Shape Preset">
+          <FieldLabel>Fill mode</FieldLabel>
+          <SegmentedControl
+            value={fillMode}
+            options={[
+              { value: 'solid', label: 'Solid' },
+              { value: 'empty', label: 'Empty' },
+            ]}
+            onChange={(value) =>
+              updateToolDefaults('shape', {
+                fillColor: value === 'empty' ? 'transparent' : toolDefaults.shape.fillColor || '#ffffff',
+              })
+            }
+          />
+          <ColorField
+            label="Fill"
+            value={toolDefaults.shape.fillColor === 'transparent' ? '#ffffff' : toolDefaults.shape.fillColor}
+            onChange={(value) => updateToolDefaults('shape', { fillColor: value })}
+          />
+          <ColorField
+            label="Stroke"
+            value={toolDefaults.shape.strokeColor}
+            onChange={(value) => updateToolDefaults('shape', { strokeColor: value })}
+          />
+          <TypographySection
+            color={toolDefaults.shape.textColor}
+            onColorChange={(value) => updateToolDefaults('shape', { textColor: value })}
+            fontFamily={toolDefaults.shape.fontFamily}
+            onFontFamilyChange={(value) => updateToolDefaults('shape', { fontFamily: value })}
+            fontSize={toolDefaults.shape.fontSize}
+            onFontSizeChange={(value) => updateToolDefaults('shape', { fontSize: value })}
+            fontWeight={toolDefaults.shape.fontWeight}
+            onFontWeightChange={(value) => updateToolDefaults('shape', { fontWeight: value })}
+            textAlign={toolDefaults.shape.textAlign}
+            onTextAlignChange={(value) => updateToolDefaults('shape', { textAlign: value })}
+          />
+        </InspectorShell>
+      );
+    }
+
+    if (activeTool === 'sticky') {
+      return (
+        <InspectorShell icon="sticky_note_2" title="Sticky Preset">
+          <ColorField
+            label="Note color"
+            value={toolDefaults.sticky.color}
+            onChange={(value) => updateToolDefaults('sticky', { color: value })}
+          />
+          <TypographySection
+            color={toolDefaults.sticky.textColor}
+            onColorChange={(value) => updateToolDefaults('sticky', { textColor: value })}
+            fontFamily={toolDefaults.sticky.fontFamily}
+            onFontFamilyChange={(value) => updateToolDefaults('sticky', { fontFamily: value })}
+            fontSize={toolDefaults.sticky.fontSize}
+            onFontSizeChange={(value) => updateToolDefaults('sticky', { fontSize: value })}
+            fontWeight="normal"
+            onFontWeightChange={() => undefined}
+            textAlign={toolDefaults.sticky.textAlign}
+            onTextAlignChange={(value) => updateToolDefaults('sticky', { textAlign: value })}
+            hideWeight
+          />
+        </InspectorShell>
+      );
+    }
+
+    if (activeTool === 'text') {
+      return (
+        <InspectorShell icon="text_fields" title="Text Preset">
+          <TypographySection
+            color={toolDefaults.text.color}
+            onColorChange={(value) => updateToolDefaults('text', { color: value })}
+            fontFamily={toolDefaults.text.fontFamily}
+            onFontFamilyChange={(value) => updateToolDefaults('text', { fontFamily: value })}
+            fontSize={toolDefaults.text.fontSize}
+            onFontSizeChange={(value) => updateToolDefaults('text', { fontSize: value })}
+            fontWeight={toolDefaults.text.fontWeight}
+            onFontWeightChange={(value) => updateToolDefaults('text', { fontWeight: value })}
+            textAlign={toolDefaults.text.textAlign}
+            onTextAlignChange={(value) => updateToolDefaults('text', { textAlign: value })}
+          />
+        </InspectorShell>
+      );
+    }
+
+    if (activeTool === 'arrow') {
+      return (
+        <InspectorShell icon="arrow_right_alt" title="Arrow Preset">
+          <ColorField
+            label="Stroke"
+            value={toolDefaults.arrow.color}
+            onChange={(value) => updateToolDefaults('arrow', { color: value })}
+          />
+          <NumberField
+            label="Weight"
+            min={1}
+            max={12}
+            step={1}
+            value={toolDefaults.arrow.strokeWidth}
+            onChange={(value) => updateToolDefaults('arrow', { strokeWidth: value })}
+          />
+        </InspectorShell>
+      );
+    }
+
+    if (activeTool === 'pen') {
+      return (
+        <InspectorShell icon="edit" title="Pen Preset">
+          <ColorField
+            label="Stroke"
+            value={toolDefaults.pen.color}
+            onChange={(value) => updateToolDefaults('pen', { color: value })}
+          />
+          <NumberField
+            label="Weight"
+            min={1}
+            max={20}
+            step={1}
+            value={toolDefaults.pen.strokeWidth}
+            onChange={(value) => updateToolDefaults('pen', { strokeWidth: value })}
+          />
+        </InspectorShell>
+      );
+    }
+
+    return null;
+  }
 
   if (selectedIds.length > 1) {
     return (
@@ -28,6 +166,10 @@ export function SelectionInspector() {
           Styling is available for one element at a time. Select a single item to change its
           colors, typography, and orientation.
         </div>
+        <LayerActions
+          onBringToFront={bringSelectionToFront}
+          onSendToBack={sendSelectionToBack}
+        />
       </InspectorShell>
     );
   }
@@ -58,6 +200,10 @@ export function SelectionInspector() {
       {element.type === 'code' && (
         <CodeInspector element={element} updateElement={updateElement} />
       )}
+      <LayerActions
+        onBringToFront={bringSelectionToFront}
+        onSendToBack={sendSelectionToBack}
+      />
     </InspectorShell>
   );
 }
@@ -386,6 +532,34 @@ function RotationField({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
         style={{ width: '100%', accentColor: 'var(--primary)' }}
+      />
+    </>
+  );
+}
+
+function LayerActions({
+  onBringToFront,
+  onSendToBack,
+}: {
+  onBringToFront: () => void;
+  onSendToBack: () => void;
+}) {
+  return (
+    <>
+      <FieldLabel>Layer</FieldLabel>
+      <SegmentedControl
+        value=""
+        options={[
+          { value: 'back', label: 'Send Back' },
+          { value: 'front', label: 'Bring Front' },
+        ]}
+        onChange={(value) => {
+          if (value === 'front') {
+            onBringToFront();
+            return;
+          }
+          onSendToBack();
+        }}
       />
     </>
   );

@@ -126,7 +126,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
               whiteSpace: 'pre-wrap',
             }}
           >
-            {text || <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Double-click</span>}
+            {text || (selected ? <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Double-click</span> : null)}
           </span>
         )}
       </div>

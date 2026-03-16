@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { DocPage, Point, Tool, ViewState, WhiteboardElement } from '../types';
+import type { DocPage, FontWeight, Point, TextAlign, Tool, ViewState, WhiteboardElement } from '../types';
 import {
   cloneData,
   cloneElementsForPaste,
@@ -107,6 +107,40 @@ const findFirstPageId = (pages: DocPage[]): string | null => {
   return null;
 };
 
+interface ToolDefaults {
+  shape: {
+    fillColor: string;
+    strokeColor: string;
+    textColor: string;
+    fontSize: number;
+    fontFamily: string;
+    fontWeight: FontWeight;
+    textAlign: TextAlign;
+  };
+  sticky: {
+    color: string;
+    textColor: string;
+    fontSize: number;
+    fontFamily: string;
+    textAlign: TextAlign;
+  };
+  text: {
+    color: string;
+    fontSize: number;
+    fontFamily: string;
+    fontWeight: FontWeight;
+    textAlign: TextAlign;
+  };
+  arrow: {
+    color: string;
+    strokeWidth: number;
+  };
+  pen: {
+    color: string;
+    strokeWidth: number;
+  };
+}
+
 interface BoardSnapshot {
   elements: WhiteboardElement[];
   pages: DocPage[];
@@ -128,6 +162,39 @@ interface SavedBoard {
 }
 
 const makeInitialViewState = (): ViewState => ({ x: 0, y: 0, zoom: 1 });
+const makeInitialToolDefaults = (): ToolDefaults => ({
+  shape: {
+    fillColor: '#ffffff',
+    strokeColor: '#000000',
+    textColor: '#000000',
+    fontSize: 14,
+    fontFamily: 'Inter',
+    fontWeight: 'normal',
+    textAlign: 'center',
+  },
+  sticky: {
+    color: '#f2f2f2',
+    textColor: '#000000',
+    fontSize: 14,
+    fontFamily: 'Inter',
+    textAlign: 'left',
+  },
+  text: {
+    color: '#000000',
+    fontSize: 18,
+    fontFamily: 'Inter',
+    fontWeight: 'normal',
+    textAlign: 'left',
+  },
+  arrow: {
+    color: '#000000',
+    strokeWidth: 2,
+  },
+  pen: {
+    color: '#000000',
+    strokeWidth: 2,
+  },
+});
 
 const makeBlankBoard = (title = 'Untitled Board'): BoardSnapshot => ({
   elements: [],
@@ -200,6 +267,7 @@ interface AppStore {
   docsNavigatorCollapsed: boolean;
   docsEditorChromeCollapsed: boolean;
   activeSurface: 'document' | 'whiteboard';
+  toolDefaults: ToolDefaults;
 
   selectedIds: string[];
   activeTool: Tool;
@@ -227,6 +295,8 @@ interface AppStore {
   groupSelected: () => void;
   ungroupSelected: () => void;
   toggleLock: (id: string) => void;
+  bringSelectionToFront: () => void;
+  sendSelectionToBack: () => void;
 
   copySelected: () => Promise<void>;
   paste: (source?: WhiteboardElement[], anchor?: Point) => void;
@@ -255,6 +325,7 @@ interface AppStore {
   setDocsEditorChromeCollapsed: (collapsed: boolean) => void;
   toggleDocsEditorChromeCollapsed: () => void;
   setActiveSurface: (surface: 'document' | 'whiteboard') => void;
+  updateToolDefaults: <K extends keyof ToolDefaults>(tool: K, patch: Partial<ToolDefaults[K]>) => void;
 }
 
 export const useStore = create<AppStore>()(
@@ -273,6 +344,7 @@ export const useStore = create<AppStore>()(
       docsNavigatorCollapsed: false,
       docsEditorChromeCollapsed: false,
       activeSurface: 'whiteboard',
+      toolDefaults: makeInitialToolDefaults(),
 
       selectedIds: [],
       activeTool: 'select',
@@ -382,6 +454,10 @@ export const useStore = create<AppStore>()(
       selectElement: (id, additive = false) => {
         const { elements } = get();
         const element = elements.find((candidate) => candidate.id === id);
+        if (element?.locked) {
+          set({ selectedIds: [id] });
+          return;
+        }
         const groupId = element?.groupId;
         const nextIds = groupId
           ? elements.filter((candidate) => candidate.groupId === groupId).map((candidate) => candidate.id)
@@ -438,6 +514,46 @@ export const useStore = create<AppStore>()(
           selectedIds: target.locked
             ? get().selectedIds
             : get().selectedIds.filter((selectedId) => selectedId !== id),
+        });
+      },
+
+      bringSelectionToFront: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length === 0) return;
+        get().historyPush();
+        const selected = elements
+          .filter((element) => selectedIds.includes(element.id))
+          .sort((a, b) => a.zIndex - b.zIndex);
+        const unselected = elements.filter((element) => !selectedIds.includes(element.id));
+        let nextZ = unselected.reduce((max, element) => Math.max(max, element.zIndex), 0);
+
+        set({
+          elements: elements.map((element) => {
+            const index = selected.findIndex((candidate) => candidate.id === element.id);
+            if (index === -1) return element;
+            nextZ += 1;
+            return { ...element, zIndex: nextZ };
+          }),
+        });
+      },
+
+      sendSelectionToBack: () => {
+        const { selectedIds, elements } = get();
+        if (selectedIds.length === 0) return;
+        get().historyPush();
+        const selected = elements
+          .filter((element) => selectedIds.includes(element.id))
+          .sort((a, b) => a.zIndex - b.zIndex);
+        const unselected = elements
+          .filter((element) => !selectedIds.includes(element.id))
+          .sort((a, b) => a.zIndex - b.zIndex);
+        const ordered = [...selected, ...unselected];
+
+        set({
+          elements: elements.map((element) => {
+            const index = ordered.findIndex((candidate) => candidate.id === element.id);
+            return index === -1 ? element : { ...element, zIndex: index + 1 };
+          }),
         });
       },
 
@@ -624,11 +740,21 @@ export const useStore = create<AppStore>()(
       toggleDocsEditorChromeCollapsed: () =>
         set((state) => ({ docsEditorChromeCollapsed: !state.docsEditorChromeCollapsed })),
       setActiveSurface: (activeSurface) => set({ activeSurface }),
+      updateToolDefaults: (tool, patch) =>
+        set((state) => ({
+          toolDefaults: {
+            ...state.toolDefaults,
+            [tool]: {
+              ...state.toolDefaults[tool],
+              ...patch,
+            },
+          },
+        })),
     }),
     {
       name: APP_STORAGE_KEY,
       storage: createJSONStorage(() => fallbackStorage),
-      version: 6,
+      version: 7,
       migrate: (persistedState) => {
         const state = persistedState as Partial<AppStore> | undefined;
         const pages = state?.pages ? normalizePages(state.pages) : makeInitialPages();
@@ -645,6 +771,7 @@ export const useStore = create<AppStore>()(
           panelMode: state?.panelMode ?? 'split',
           docsNavigatorCollapsed: state?.docsNavigatorCollapsed ?? false,
           docsEditorChromeCollapsed: state?.docsEditorChromeCollapsed ?? false,
+          toolDefaults: state?.toolDefaults ?? makeInitialToolDefaults(),
           viewState: state?.viewState ?? makeInitialViewState(),
         };
       },
@@ -661,6 +788,7 @@ export const useStore = create<AppStore>()(
         panelMode: state.panelMode,
         docsNavigatorCollapsed: state.docsNavigatorCollapsed,
         docsEditorChromeCollapsed: state.docsEditorChromeCollapsed,
+        toolDefaults: state.toolDefaults,
         viewState: state.viewState,
       }),
     }
