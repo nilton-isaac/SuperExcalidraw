@@ -314,6 +314,8 @@ interface AppStore {
   loadBoard: (id: string) => void;
   deleteBoard: (id: string) => void;
   createBoard: (title?: string) => void;
+  importBoard: (data: unknown) => void;
+  importAllBoards: (data: unknown) => void;
 
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
@@ -728,6 +730,62 @@ export const useStore = create<AppStore>()(
           undoFuture: [],
           clipboard: [],
         });
+      },
+
+      importBoard: (rawData) => {
+        const data = rawData as Record<string, unknown>;
+        if (!data || typeof data !== 'object') throw new Error('Invalid file');
+        const elements = Array.isArray(data.elements) ? (data.elements as WhiteboardElement[]) : [];
+        const rawPages = Array.isArray(data.pages) ? (data.pages as DocPage[]) : makeInitialPages();
+        const pages = normalizePages(rawPages);
+        const title = typeof data.documentTitle === 'string' ? data.documentTitle.trim() : '';
+        const boardName = title || 'Imported Board';
+        const activePageId = typeof data.activePageId === 'string' ? data.activePageId : findFirstPageId(pages);
+        const id = uuidv4();
+        const snapshot: BoardSnapshot = {
+          elements,
+          pages,
+          activePageId,
+          documentTitle: boardName,
+          theme: (data.theme as 'light' | 'dark') ?? 'light',
+          layoutMode: (data.layoutMode as 'horizontal' | 'vertical') ?? 'horizontal',
+          splitRatio: typeof data.splitRatio === 'number' ? data.splitRatio : 0.28,
+          panelMode: (data.panelMode as 'split' | 'docs-only' | 'whiteboard-only') ?? 'split',
+          docsNavigatorCollapsed: Boolean(data.docsNavigatorCollapsed),
+          viewState: makeInitialViewState(),
+        };
+        const newBoard: SavedBoard = { id, name: boardName, updatedAt: new Date().toISOString(), snapshot };
+        set((current) => ({
+          elements: snapshot.elements,
+          pages: snapshot.pages,
+          activePageId: snapshot.activePageId,
+          documentTitle: boardName,
+          activeBoardId: id,
+          theme: snapshot.theme,
+          layoutMode: snapshot.layoutMode,
+          splitRatio: snapshot.splitRatio,
+          panelMode: snapshot.panelMode,
+          docsNavigatorCollapsed: snapshot.docsNavigatorCollapsed,
+          viewState: snapshot.viewState,
+          savedBoards: [newBoard, ...current.savedBoards].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+          selectedIds: [],
+          activeTool: 'select',
+          undoPast: [],
+          undoFuture: [],
+          clipboard: [],
+        }));
+      },
+
+      importAllBoards: (rawData) => {
+        const data = rawData as Record<string, unknown>;
+        if (!data || !Array.isArray(data.boards)) throw new Error('Invalid backup file');
+        const imported = normalizeSavedBoards(data.boards as SavedBoard[]);
+        set((current) => ({
+          savedBoards: [
+            ...imported.filter((b) => !current.savedBoards.some((e) => e.id === b.id)),
+            ...current.savedBoards,
+          ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+        }));
       },
 
       setTheme: (theme) => set({ theme }),
