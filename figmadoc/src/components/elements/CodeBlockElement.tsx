@@ -6,6 +6,27 @@ import { useStore } from '../../store/useStore';
 import { createSandboxIframe } from '../../lib/sandbox';
 import { Icon } from '../Icon';
 import { ElementResizeHandles } from './ElementResizeHandles';
+import CodeMirror from '@uiw/react-codemirror';
+import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { html as langHtml } from '@codemirror/lang-html';
+import { css as langCss } from '@codemirror/lang-css';
+import { javascript as langJs } from '@codemirror/lang-javascript';
+import type { Extension } from '@codemirror/state';
+
+type CodeTheme = 'vscode-dark' | 'vscode-light' | 'one-dark';
+
+const THEMES: { id: CodeTheme; label: string; ext: Extension }[] = [
+  { id: 'vscode-dark',  label: 'Dark+',     ext: vscodeDark },
+  { id: 'vscode-light', label: 'Light+',    ext: vscodeLight },
+  { id: 'one-dark',     label: 'One Dark',  ext: oneDark },
+];
+
+function getLangExtension(tab: Tab, runtime: 'browser' | 'react'): Extension {
+  if (tab === 'html') return langHtml();
+  if (tab === 'css')  return langCss();
+  return langJs({ jsx: runtime === 'react', typescript: false });
+}
 
 type Tab = 'html' | 'css' | 'js' | 'preview';
 
@@ -27,6 +48,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
   const runtime = element.properties.runtime ?? inferRuntime(js, html);
   const tabs = runtime === 'react' ? (['js', 'preview'] as Tab[]) : (['html', 'css', 'js', 'preview'] as Tab[]);
   const [tab, setTab] = useState<Tab>(runtime === 'react' ? 'js' : 'html');
+  const [codeTheme, setCodeTheme] = useState<CodeTheme>('vscode-dark');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [running, setRunning] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -262,6 +284,29 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
               <option value="react" style={{ color: '#000' }}>React JSX</option>
             </select>
 
+            <select
+              value={codeTheme}
+              onPointerDown={(event) => event.stopPropagation()}
+              onChange={(event) => setCodeTheme(event.target.value as CodeTheme)}
+              title="Editor theme"
+              style={{
+                height: 28,
+                borderRadius: 6,
+                border: '1px solid rgba(255,255,255,0.14)',
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.82)',
+                padding: '0 8px',
+                fontSize: 10.5,
+                fontFamily: 'JetBrains Mono',
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              {THEMES.map((t) => (
+                <option key={t.id} value={t.id} style={{ color: '#000' }}>{t.label}</option>
+              ))}
+            </select>
+
             {tabs.map((currentTab) => (
               <button
                 key={currentTab}
@@ -338,42 +383,29 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {tab !== 'preview' && (
-            <textarea
-              value={tab === 'html' ? html : tab === 'css' ? css : js}
-              onChange={(event) => update(tab as 'html' | 'css' | 'js', event.target.value)}
-              spellCheck={false}
+            <div
+              style={{ flex: 1, overflow: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}
               onPointerDown={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key === 'Tab') {
-                  event.preventDefault();
-                  const target = event.currentTarget;
-                  const start = target.selectionStart;
-                  const end = target.selectionEnd;
-                  const value = target.value.substring(0, start) + '  ' + target.value.substring(end);
-                  const field = tab as 'html' | 'css' | 'js';
-                  update(field, value);
-                  requestAnimationFrame(() => {
-                    target.selectionStart = target.selectionEnd = start + 2;
-                  });
-                }
-              }}
               onWheel={(event) => event.stopPropagation()}
-              style={{
-                flex: 1,
-                background: 'transparent',
-                border: 'none',
-                resize: 'none',
-                outline: 'none',
-                padding: '14px 16px',
-                fontFamily: 'JetBrains Mono',
-                fontSize: 12.5,
-                lineHeight: 1.65,
-                color: 'var(--code-fg)',
-                userSelect: 'text',
-                cursor: 'text',
-                minHeight: 0,
-              }}
-            />
+            >
+              <CodeMirror
+                key={tab}
+                value={tab === 'html' ? html : tab === 'css' ? css : js}
+                onChange={(value) => update(tab as 'html' | 'css' | 'js', value)}
+                theme={THEMES.find((t) => t.id === codeTheme)!.ext}
+                extensions={[getLangExtension(tab, runtime)]}
+                style={{ flex: 1, fontSize: 12.5, fontFamily: 'JetBrains Mono' }}
+                basicSetup={{
+                  lineNumbers: true,
+                  foldGutter: true,
+                  autocompletion: true,
+                  highlightActiveLine: true,
+                  indentOnInput: true,
+                  bracketMatching: true,
+                  closeBrackets: true,
+                }}
+              />
+            </div>
           )}
 
           <div
