@@ -374,6 +374,70 @@ export function Header() {
   );
 }
 
+function useStorageUsage() {
+  const [usage, setUsage] = useState(() => calcUsage());
+
+  useEffect(() => {
+    setUsage(calcUsage());
+    const id = setInterval(() => setUsage(calcUsage()), 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  return usage;
+}
+
+function calcUsage() {
+  const LIMIT = 5 * 1024 * 1024; // 5 MB (typical browser limit)
+  let usedChars = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i) ?? '';
+    usedChars += k.length + (localStorage.getItem(k) ?? '').length;
+  }
+  const usedBytes = usedChars * 2; // UTF-16: ~2 bytes per char
+  return { usedBytes, limitBytes: LIMIT, percent: Math.min((usedBytes / LIMIT) * 100, 100) };
+}
+
+function fmt(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function StorageBar() {
+  const { usedBytes, limitBytes, percent } = useStorageUsage();
+  const color = percent < 60 ? '#22c55e' : percent < 85 ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Storage
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono' }}>
+          {fmt(usedBytes)} / {fmt(limitBytes)} · <span style={{ color, fontWeight: 700 }}>{percent.toFixed(1)}%</span>
+        </span>
+      </div>
+      <div style={{ height: 6, borderRadius: 99, background: 'var(--bg-tertiary)', overflow: 'hidden' }}>
+        <div
+          style={{
+            height: '100%',
+            width: `${percent}%`,
+            borderRadius: 99,
+            background: color,
+            transition: 'width 0.4s ease, background 0.4s ease',
+          }}
+        />
+      </div>
+      {percent >= 85 && (
+        <div style={{ fontSize: 11, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Icon name="warning" size={13} />
+          Espaço crítico — exporte e limpe boards não utilizados.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BoardManager({
   activeBoardId,
   boardNameDraft,
@@ -448,6 +512,10 @@ function BoardManager({
             <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{documentTitle}</div>
           </div>
           <IconBtn icon="close" title="Close" onClick={onClose} />
+        </div>
+
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)' }}>
+          <StorageBar />
         </div>
 
         <div style={{ padding: 18, borderBottom: '1px solid var(--border-color)', display: 'grid', gap: 10 }}>
