@@ -11,9 +11,47 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Typography from '@tiptap/extension-typography';
 import StarterKit from '@tiptap/starter-kit';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { createLowlight } from 'lowlight';
+import json from 'highlight.js/lib/languages/json';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import css from 'highlight.js/lib/languages/css';
+import python from 'highlight.js/lib/languages/python';
+import sql from 'highlight.js/lib/languages/sql';
+import bash from 'highlight.js/lib/languages/bash';
+import yaml from 'highlight.js/lib/languages/yaml';
 import { useStore } from '../store/useStore';
 import type { DocPage } from '../types';
 import { Icon } from './Icon';
+
+const lowlight = createLowlight();
+lowlight.register({ json, javascript, typescript, xml, css, python, sql, bash, yaml });
+
+// Extends CodeBlockLowlight to add data-language on <pre> (used by CSS ::before label)
+const CodeBlockWithLabel = CodeBlockLowlight.extend({
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      'pre',
+      { ...HTMLAttributes, 'data-language': node.attrs.language ?? 'plaintext' },
+      ['code', { class: node.attrs.language ? `language-${node.attrs.language}` : undefined }, 0],
+    ];
+  },
+});
+
+const CODE_LANGUAGES = [
+  { value: 'plaintext', label: 'Plain text' },
+  { value: 'json',       label: 'JSON' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'xml',        label: 'HTML / XML' },
+  { value: 'css',        label: 'CSS' },
+  { value: 'python',     label: 'Python' },
+  { value: 'sql',        label: 'SQL' },
+  { value: 'bash',       label: 'Bash' },
+  { value: 'yaml',       label: 'YAML' },
+];
 
 const FONT_OPTIONS = [
   { label: 'Inter', value: 'Inter' },
@@ -303,7 +341,8 @@ function PageEditor({
 }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockWithLabel.configure({ lowlight, defaultLanguage: 'plaintext' }),
       TextStyle,
       Color,
       FontFamily,
@@ -632,6 +671,13 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
       icon: 'code',
     },
     {
+      key: 'codeBlock',
+      title: 'Code block',
+      active: () => editor.isActive('codeBlock'),
+      run: () => editor.chain().focus().toggleCodeBlock().run(),
+      icon: 'data_object',
+    },
+    {
       key: 'rule',
       title: 'Divider',
       active: () => false,
@@ -639,6 +685,9 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
       icon: 'horizontal_rule',
     },
   ];
+
+  const isCodeBlock = editor.isActive('codeBlock');
+  const codeBlockLang = editor.getAttributes('codeBlock').language ?? 'plaintext';
 
   return (
     <div
@@ -667,6 +716,24 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
           {button.icon ? <Icon name={button.icon} size={16} /> : button.label}
         </FormatButton>
       ))}
+
+      {isCodeBlock && (
+        <>
+          <ToolbarDivider tone={tone} />
+          <select
+            value={codeBlockLang}
+            onChange={(event) =>
+              editor.chain().focus().updateAttributes('codeBlock', { language: event.target.value }).run()
+            }
+            title="Code language"
+            style={getControlStyle(tone)}
+          >
+            {CODE_LANGUAGES.map((lang) => (
+              <option key={lang.value} value={lang.value}>{lang.label}</option>
+            ))}
+          </select>
+        </>
+      )}
 
       <ToolbarDivider tone={tone} />
 
