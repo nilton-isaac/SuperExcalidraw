@@ -51,12 +51,7 @@ export function Header() {
     loadBoard,
     deleteBoard,
     createBoard,
-    importBoard,
-    importAllBoards,
   } = useStore();
-
-  const importRef = useRef<HTMLInputElement>(null);
-  const importAllRef = useRef<HTMLInputElement>(null);
 
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(documentTitle);
@@ -251,64 +246,6 @@ export function Header() {
           New
         </ActionBtn>
 
-        <ActionBtn
-          icon="download"
-          onClick={() => {
-            const state = useStore.getState();
-            const payload = {
-              format: 'superexcalidraw-board',
-              version: 1,
-              documentTitle: state.documentTitle,
-              elements: state.elements,
-              pages: state.pages,
-              activePageId: state.activePageId,
-              theme: state.theme,
-              layoutMode: state.layoutMode,
-              splitRatio: state.splitRatio,
-              panelMode: state.panelMode,
-              docsNavigatorCollapsed: state.docsNavigatorCollapsed,
-              exportedAt: new Date().toISOString(),
-            };
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            const safeName = (state.documentTitle || 'board').replace(/[^a-z0-9_\-. ]/gi, '_');
-            link.download = `${safeName}.board.json`;
-            link.click();
-            URL.revokeObjectURL(link.href);
-          }}
-        >
-          Export
-        </ActionBtn>
-
-        <ActionBtn icon="upload" onClick={() => importRef.current?.click()}>
-          Import
-        </ActionBtn>
-        <input
-          ref={importRef}
-          type="file"
-          accept=".json,.board.json"
-          style={{ display: 'none' }}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              try {
-                const data = JSON.parse(e.target?.result as string);
-                if (data.format === 'superexcalidraw-backup') {
-                  importAllBoards(data);
-                } else {
-                  importBoard(data);
-                }
-              } catch {
-                alert('Arquivo inválido. Selecione um arquivo .board.json exportado por esta aplicação.');
-              }
-            };
-            reader.readAsText(file);
-            event.target.value = '';
-          }}
-        />
       </div>
 
       {boardsOpen && (
@@ -319,55 +256,13 @@ export function Header() {
           savedBoards={savedBoards}
           onBoardNameDraftChange={setBoardNameDraft}
           onClose={() => setBoardsOpen(false)}
-          onCreateBoard={() => {
-            createBoard();
-            setBoardsOpen(false);
-          }}
+          onCreateBoard={() => { createBoard(); setBoardsOpen(false); }}
           onDeleteBoard={deleteBoard}
-          onLoadBoard={(id) => {
-            loadBoard(id);
-            setBoardsOpen(false);
-          }}
+          onLoadBoard={(id) => { loadBoard(id); setBoardsOpen(false); }}
           onSaveAs={() => saveBoardAs(boardNameDraft)}
           onSaveCurrent={() => saveCurrentBoard(boardNameDraft)}
-          onExportAll={() => {
-            const { savedBoards: boards } = useStore.getState();
-            const payload = {
-              format: 'superexcalidraw-backup',
-              version: 1,
-              boards,
-              exportedAt: new Date().toISOString(),
-            };
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `superexcalidraw-backup-${new Date().toISOString().slice(0, 10)}.json`;
-            link.click();
-            URL.revokeObjectURL(link.href);
-          }}
-          onImportAll={() => importAllRef.current?.click()}
-        />
-        <input
-          ref={importAllRef}
-          type="file"
-          accept=".json"
-          style={{ display: 'none' }}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              try {
-                const data = JSON.parse(e.target?.result as string);
-                importAllBoards(data);
-                setBoardsOpen(false);
-              } catch {
-                alert('Arquivo inválido.');
-              }
-            };
-            reader.readAsText(file);
-            event.target.value = '';
-          }}
+          importBoard={importBoard}
+          importAllBoards={importAllBoards}
         />
       )}
     </header>
@@ -450,8 +345,8 @@ function BoardManager({
   onLoadBoard,
   onSaveAs,
   onSaveCurrent,
-  onExportAll,
-  onImportAll,
+  importBoard,
+  importAllBoards,
 }: {
   activeBoardId: string | null;
   boardNameDraft: string;
@@ -464,20 +359,86 @@ function BoardManager({
   onLoadBoard: (id: string) => void;
   onSaveAs: () => void;
   onSaveCurrent: () => void;
-  onExportAll: () => void;
-  onImportAll: () => void;
+  importBoard: (data: unknown) => void;
+  importAllBoards: (data: unknown) => void;
 }) {
+  const importSingleRef = useRef<HTMLInputElement>(null);
+  const importAllRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (file: File, mode: 'single' | 'all') => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (mode === 'all' || data.format === 'superexcalidraw-backup') {
+          importAllBoards(data);
+        } else {
+          importBoard(data);
+        }
+        onClose();
+      } catch {
+        alert('Arquivo inválido. Selecione um arquivo .json exportado por esta aplicação.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const exportCurrent = () => {
+    const state = useStore.getState();
+    const payload = {
+      format: 'superexcalidraw-board',
+      version: 1,
+      documentTitle: state.documentTitle,
+      elements: state.elements,
+      pages: state.pages,
+      activePageId: state.activePageId,
+      theme: state.theme,
+      layoutMode: state.layoutMode,
+      splitRatio: state.splitRatio,
+      panelMode: state.panelMode,
+      docsNavigatorCollapsed: state.docsNavigatorCollapsed,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    const safeName = (state.documentTitle || 'board').replace(/[^a-z0-9_\-. ]/gi, '_');
+    link.download = `${safeName}.board.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const exportAll = () => {
+    const { savedBoards: boards } = useStore.getState();
+    const payload = {
+      format: 'superexcalidraw-backup',
+      version: 1,
+      boards,
+      exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `superexcalidraw-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <>
       <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'var(--backdrop)',
-          zIndex: 1200,
-        }}
+        style={{ position: 'fixed', inset: 0, background: 'var(--backdrop)', zIndex: 1200 }}
         onClick={onClose}
       />
+
+      {/* Hidden file inputs */}
+      <input ref={importSingleRef} type="file" accept=".json" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f, 'single'); e.target.value = ''; }}
+      />
+      <input ref={importAllRef} type="file" accept=".json" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f, 'all'); e.target.value = ''; }}
+      />
+
       <div
         style={{
           position: 'fixed',
@@ -496,15 +457,8 @@ function BoardManager({
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div
-          style={{
-            padding: '16px 18px',
-            borderBottom: '1px solid var(--border-color)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
+        {/* Header */}
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Whiteboards
@@ -514,11 +468,13 @@ function BoardManager({
           <IconBtn icon="close" title="Close" onClick={onClose} />
         </div>
 
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)' }}>
+        {/* Storage bar */}
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
           <StorageBar />
         </div>
 
-        <div style={{ padding: 18, borderBottom: '1px solid var(--border-color)', display: 'grid', gap: 10 }}>
+        {/* Actions */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)', display: 'grid', gap: 10, flexShrink: 0 }}>
           <input
             value={boardNameDraft}
             onChange={(event) => onBoardNameDraftChange(event.target.value)}
@@ -536,13 +492,15 @@ function BoardManager({
             }}
           />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionBtn icon="save" onClick={onSaveCurrent}>Save Current</ActionBtn>
-            <ActionBtn icon="library_add" onClick={onSaveAs}>Save As New</ActionBtn>
-            <ActionBtn icon="add_box" onClick={onCreateBoard}>Blank Board</ActionBtn>
+            <ActionBtn icon="save" onClick={onSaveCurrent}>Save</ActionBtn>
+            <ActionBtn icon="library_add" onClick={onSaveAs}>Save As</ActionBtn>
+            <ActionBtn icon="add_box" onClick={onCreateBoard}>New Board</ActionBtn>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionBtn icon="backup" onClick={onExportAll}>Export All</ActionBtn>
-            <ActionBtn icon="cloud_download" onClick={onImportAll}>Import All</ActionBtn>
+            <ActionBtn icon="download" onClick={exportCurrent}>Export</ActionBtn>
+            <ActionBtn icon="upload" onClick={() => importSingleRef.current?.click()}>Import</ActionBtn>
+            <ActionBtn icon="backup" onClick={exportAll}>Export All</ActionBtn>
+            <ActionBtn icon="cloud_download" onClick={() => importAllRef.current?.click()}>Import All</ActionBtn>
           </div>
         </div>
 
