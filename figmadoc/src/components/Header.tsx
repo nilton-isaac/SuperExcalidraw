@@ -261,8 +261,8 @@ export function Header() {
           onLoadBoard={(id) => { loadBoard(id); setBoardsOpen(false); }}
           onSaveAs={() => saveBoardAs(boardNameDraft)}
           onSaveCurrent={() => saveCurrentBoard(boardNameDraft)}
-          importBoard={importBoard}
-          importAllBoards={importAllBoards}
+          importBoard={useStore.getState().importBoard}
+          importAllBoards={useStore.getState().importAllBoards}
         />
       )}
     </header>
