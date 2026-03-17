@@ -645,7 +645,7 @@ export const useStore = create<AppStore>()(
           id,
           name: boardName,
           updatedAt: new Date().toISOString(),
-          snapshot: createBoardSnapshot(state),
+          snapshot: { ...createBoardSnapshot(state), documentTitle: boardName },
         };
 
         set((current) => ({
@@ -654,6 +654,7 @@ export const useStore = create<AppStore>()(
             ...current.savedBoards.filter((board) => board.id !== id),
           ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
           activeBoardId: id,
+          documentTitle: boardName,
         }));
 
         return id;
@@ -666,12 +667,13 @@ export const useStore = create<AppStore>()(
           id,
           name: boardName,
           updatedAt: new Date().toISOString(),
-          snapshot: createBoardSnapshot(state),
+          snapshot: { ...createBoardSnapshot(state), documentTitle: boardName },
         };
 
         set((current) => ({
           savedBoards: [nextBoard, ...current.savedBoards].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
           activeBoardId: id,
+          documentTitle: boardName,
         }));
 
         return id;

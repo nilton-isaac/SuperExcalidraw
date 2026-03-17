@@ -283,7 +283,7 @@ export function Header() {
             setBoardsOpen(false);
           }}
           onSaveAs={() => saveBoardAs(boardNameDraft)}
-          onSaveCurrent={() => saveCurrentBoard()}
+          onSaveCurrent={() => saveCurrentBoard(boardNameDraft)}
         />
       )}
     </header>
