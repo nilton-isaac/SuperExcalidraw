@@ -847,6 +847,33 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
           </FormatButton>
         ))}
       </div>
+
+      <ToolbarDivider tone={tone} />
+
+      <FormatButton
+        title="Insert Image"
+        active={false}
+        tone={tone}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.onchange = () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const dataUrl = e.target?.result as string;
+              editor.commands.insertContent(`<img src="${dataUrl}" />`);
+            };
+            reader.readAsDataURL(file);
+          };
+          input.click();
+        }}
+      >
+        <Icon name="image" size={16} />
+      </FormatButton>
     </div>
   );
 }

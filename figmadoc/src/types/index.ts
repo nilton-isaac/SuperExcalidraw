@@ -10,9 +10,10 @@ export type Tool =
   | 'text'
   | 'image'
   | 'pen'
-  | 'eraser';
+  | 'eraser'
+  | 'chart';
 
-export type ElementType = 'shape' | 'sticky' | 'code' | 'arrow' | 'text' | 'pen' | 'image';
+export type ElementType = 'shape' | 'sticky' | 'code' | 'arrow' | 'text' | 'pen' | 'image' | 'chart';
 export type TextAlign = 'left' | 'center' | 'right';
 export type FontWeight = 'normal' | '600' | '700';
 export type CodeRuntime = 'browser' | 'react';
@@ -52,6 +53,8 @@ export interface ArrowProperties {
   color?: string;
   strokeWidth?: number;
   arrowHead?: ArrowHead;
+  startElementId?: string;
+  endElementId?: string;
 }
 export interface TextProperties {
   text: string;
@@ -63,6 +66,14 @@ export interface TextProperties {
 }
 export interface PenProperties { points: Point[]; color: string; strokeWidth: number; }
 export interface ImageProperties { src: string; alt?: string; objectFit?: 'contain' | 'cover' | 'fill'; }
+
+export type ChartType = 'bar' | 'line' | 'pie';
+export interface ChartProperties {
+  chartType: ChartType;
+  title?: string;
+  labels: string[];
+  datasets: { label: string; data: number[]; color?: string }[];
+}
 
 export interface BaseElement {
   id: string;
@@ -84,10 +95,11 @@ export interface ArrowElement extends BaseElement { type: 'arrow'; properties: A
 export interface TextElement extends BaseElement { type: 'text'; properties: TextProperties; }
 export interface PenElement extends BaseElement { type: 'pen'; properties: PenProperties; }
 export interface ImageElement extends BaseElement { type: 'image'; properties: ImageProperties; }
+export interface ChartElement extends BaseElement { type: 'chart'; properties: ChartProperties; }
 
 export type WhiteboardElement =
   | ShapeElement | StickyElement | CodeElement | ArrowElement
-  | TextElement | PenElement | ImageElement;
+  | TextElement | PenElement | ImageElement | ChartElement;
 
 export interface DocPage {
   id: string;

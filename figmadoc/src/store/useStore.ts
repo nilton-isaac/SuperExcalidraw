@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import type { DocPage, FontWeight, Point, TextAlign, Tool, ViewState, WhiteboardElement } from '../types';
+import type { ChartType, DocPage, FontWeight, Point, TextAlign, Tool, ViewState, WhiteboardElement } from '../types';
 import {
   cloneData,
   cloneElementsForPaste,
@@ -139,6 +139,11 @@ interface ToolDefaults {
     color: string;
     strokeWidth: number;
   };
+  chart: {
+    chartType: ChartType;
+    labels: string[];
+    datasets: { label: string; data: number[]; color?: string }[];
+  };
 }
 
 interface BoardSnapshot {
@@ -195,6 +200,11 @@ const makeInitialToolDefaults = (): ToolDefaults => ({
   pen: {
     color: '#000000',
     strokeWidth: 2,
+  },
+  chart: {
+    chartType: 'bar' as ChartType,
+    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
+    datasets: [{ label: 'Series 1', data: [40, 70, 45, 90], color: '#2563eb' }],
   },
 });
 

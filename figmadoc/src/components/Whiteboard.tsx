@@ -11,6 +11,7 @@ import { ImageElementComponent } from './elements/ImageElement';
 import { ShapeElementComponent } from './elements/ShapeElement';
 import { StickyElementComponent } from './elements/StickyElement';
 import { TextElementComponent } from './elements/TextElement';
+import { ChartElementComponent } from './elements/ChartElement';
 
 interface AlignmentGuide {
   orientation: 'vertical' | 'horizontal';
@@ -18,6 +19,36 @@ interface AlignmentGuide {
   start: number;
   end: number;
 }
+
+// ── Helper: snap arrow point to nearest element edge anchor ──────────────────
+function getSnapTarget(
+  point: Point,
+  elements: WhiteboardElement[],
+  threshold = 20
+): { snappedPoint: Point; elementId: string } | null {
+  let best: { snappedPoint: Point; elementId: string; dist: number } | null = null;
+
+  for (const el of elements) {
+    if (el.type === 'arrow' || el.type === 'pen') continue;
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    const anchors: Point[] = [
+      { x: cx, y: el.y },                   // top center
+      { x: cx, y: el.y + el.height },        // bottom center
+      { x: el.x, y: cy },                    // left center
+      { x: el.x + el.width, y: cy },         // right center
+    ];
+    for (const anchor of anchors) {
+      const dist = Math.hypot(point.x - anchor.x, point.y - anchor.y);
+      if (dist <= threshold && (!best || dist < best.dist)) {
+        best = { snappedPoint: anchor, elementId: el.id, dist };
+      }
+    }
+  }
+
+  return best ? { snappedPoint: best.snappedPoint, elementId: best.elementId } : null;
+}
+
 
 export function Whiteboard() {
   const {
@@ -133,6 +164,8 @@ export function Whiteboard() {
       if (event.key === 'Escape') {
         clearSelection();
         setActiveTool('select');
+        // Also cancel drawing arrow
+        setDrawingArrow(null);
       }
       if (hasPrimaryModifier && (event.key === 'a' || event.key === 'A')) {
         event.preventDefault();
@@ -341,6 +374,86 @@ export function Whiteboard() {
 
       if (activeTool === 'select') {
         const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+
+        // Check if click is inside combined bounding box of selected elements
+        if (!additive && selectedIds.length > 0) {
+          const state = useStore.getState();
+          const selectedElements = state.elements.filter((e) => selectedIds.includes(e.id));
+          if (selectedElements.length > 0) {
+            const combinedBounds = getCombinedBounds(selectedElements);
+            if (
+              point.x >= combinedBounds.left &&
+              point.x <= combinedBounds.right &&
+              point.y >= combinedBounds.top &&
+              point.y <= combinedBounds.bottom
+            ) {
+              // Start drag of selected elements instead of selection box
+              const draggableElements = selectedElements.filter((e) => !e.locked);
+              if (draggableElements.length > 0) {
+                historyPush();
+                const startX = event.clientX;
+                const startY = event.clientY;
+                const staticElements = state.elements.filter((e) => !selectedIds.includes(e.id));
+                const startPositions = new Map(
+                  draggableElements.map((e) => [e.id, { x: e.x, y: e.y }])
+                );
+                const selectionBounds = getCombinedBounds(draggableElements);
+                let frame = 0;
+                let lastEvent: PointerEvent | null = null;
+
+                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
+                const onMove = (nextEvent: PointerEvent) => {
+                  lastEvent = nextEvent;
+                  if (frame) return;
+                  frame = window.requestAnimationFrame(() => {
+                    if (!lastEvent) { frame = 0; return; }
+                    const currentViewState = useStore.getState().viewState;
+                    const dx = (lastEvent.clientX - startX) / currentViewState.zoom;
+                    const dy = (lastEvent.clientY - startY) / currentViewState.zoom;
+                    const alignment = getAlignmentResult(selectionBounds, staticElements, dx, dy, 6 / currentViewState.zoom);
+                    const movedUpdates = draggableElements.map((e) => {
+                      const initial = startPositions.get(e.id)!;
+                      return {
+                        id: e.id,
+                        updates: {
+                          x: initial.x + alignment.dx,
+                          y: initial.y + alignment.dy,
+                        },
+                      };
+                    });
+
+                    // Also update connected arrows
+                    const arrowUpdates = computeConnectedArrowUpdates(
+                      useStore.getState().elements,
+                      draggableElements.map((e) => ({
+                        ...e,
+                        x: (startPositions.get(e.id)?.x ?? e.x) + alignment.dx,
+                        y: (startPositions.get(e.id)?.y ?? e.y) + alignment.dy,
+                      }))
+                    );
+
+                    updateElements([...movedUpdates, ...arrowUpdates]);
+                    setAlignmentGuides(alignment.guides);
+                    frame = 0;
+                  });
+                };
+
+                const onUp = () => {
+                  if (frame) window.cancelAnimationFrame(frame);
+                  window.removeEventListener('pointermove', onMove);
+                  window.removeEventListener('pointerup', onUp);
+                  setAlignmentGuides([]);
+                };
+
+                window.addEventListener('pointermove', onMove);
+                window.addEventListener('pointerup', onUp);
+                return;
+              }
+            }
+          }
+        }
+
         if (!additive) clearSelection();
         setSelectionBox({
           start: point,
@@ -385,7 +498,6 @@ export function Whiteboard() {
           },
         });
         selectElement(id);
-        setActiveTool('select');
         return;
       }
 
@@ -405,7 +517,6 @@ export function Whiteboard() {
           },
         });
         selectElement(id);
-        setActiveTool('select');
         return;
       }
 
@@ -426,7 +537,6 @@ export function Whiteboard() {
           },
         });
         selectElement(id);
-        setActiveTool('select');
         return;
       }
 
@@ -450,7 +560,6 @@ export function Whiteboard() {
               properties: { src, alt: file.name, objectFit: 'contain' },
             });
             selectElement(id);
-            setActiveTool('select');
           };
           reader.readAsDataURL(file);
         };
@@ -458,9 +567,40 @@ export function Whiteboard() {
         return;
       }
 
+      if (activeTool === 'chart') {
+        const id = addElement({
+          type: 'chart',
+          x: point.x - 200,
+          y: point.y - 150,
+          width: 400,
+          height: 300,
+          properties: {
+            chartType: toolDefaults.chart.chartType,
+            labels: [...toolDefaults.chart.labels],
+            datasets: toolDefaults.chart.datasets.map((ds) => ({ ...ds })),
+          },
+        });
+        selectElement(id);
+        return;
+      }
+
       if (activeTool === 'arrow') {
-        setDrawingArrow([point]);
-        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        // Multi-point arrow: first click initializes, subsequent clicks add points
+        const currentDrawingArrow = useStore.getState();
+        void currentDrawingArrow; // accessed via state closure below
+        setDrawingArrow((prev) => {
+          if (prev === null) {
+            // First click: start new arrow (no pointer capture for click-based drawing)
+            const snapTarget = getSnapTarget(point, elements);
+            const snappedPoint = snapTarget ? snapTarget.snappedPoint : point;
+            return [snappedPoint];
+          } else {
+            // Subsequent clicks: append point
+            const snapTarget = getSnapTarget(point, elements);
+            const snappedPoint = snapTarget ? snapTarget.snappedPoint : point;
+            return [...prev, snappedPoint];
+          }
+        });
         return;
       }
 
@@ -469,7 +609,7 @@ export function Whiteboard() {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       }
     },
-    [activeTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, setActiveTool, toolDefaults]
+    [activeTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, toolDefaults, historyPush, updateElements, selectedIds, elements, viewState]
   );
 
   const onCanvasPointerMove = useCallback(
@@ -495,8 +635,22 @@ export function Whiteboard() {
         return;
       }
 
-      if (drawingArrow) {
-        setDrawingArrow([drawingArrow[0], point]);
+      if (drawingArrow && drawingArrow.length >= 1) {
+        // Update the last point to follow cursor (preview next segment)
+        setDrawingArrow((prev) => {
+          if (!prev) return prev;
+          // Replace the last point with current cursor position
+          // The points are: [p0, p1, ..., p(n-1), cursor]
+          // If we're drawing (has at least 1 confirmed point), show cursor as last
+          const snapTarget = getSnapTarget(point, elements);
+          const snappedPoint = snapTarget ? snapTarget.snappedPoint : point;
+          // Keep confirmed points + update last preview point
+          if (prev.length === 1) {
+            return [prev[0], snappedPoint];
+          }
+          // Replace the last unconfirmed preview point
+          return [...prev.slice(0, -1), snappedPoint];
+        });
         return;
       }
 
@@ -504,7 +658,7 @@ export function Whiteboard() {
         setPenPoints((previous) => (previous ? [...previous, point] : []));
       }
     },
-    [drawingArrow, drawingShape, penPoints, selectionBox, toCanvas, setViewState]
+    [drawingArrow, drawingShape, penPoints, selectionBox, toCanvas, setViewState, elements]
   );
 
   const onCanvasPointerUp = useCallback(
@@ -545,31 +699,11 @@ export function Whiteboard() {
         });
         setDrawingShape(null);
         selectElement(id);
-        setActiveTool('select');
         return;
       }
 
-      if (drawingArrow && drawingArrow.length === 2) {
-        const [from, to] = drawingArrow;
-        if (Math.hypot(to.x - from.x, to.y - from.y) > 10) {
-          addElement({
-            type: 'arrow',
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-            properties: {
-              points: drawingArrow,
-              color: toolDefaults.arrow.color,
-              strokeWidth: toolDefaults.arrow.strokeWidth,
-            },
-          });
-        }
-        setDrawingArrow(null);
-        setActiveTool('select');
-        return;
-      }
-
+      // Arrow is now click-based (not drag-based), handled in onCanvasDoubleClick
+      // Just handle pen completion
       if (penPoints && penPoints.length > 2) {
         addElement({
           type: 'pen',
@@ -584,7 +718,6 @@ export function Whiteboard() {
           },
         });
         setPenPoints(null);
-        setActiveTool('select');
         return;
       }
 
@@ -600,10 +733,52 @@ export function Whiteboard() {
       }
 
       setPenPoints(null);
-      setDrawingArrow(null);
       setDrawingShape(null);
     },
-    [drawingArrow, drawingShape, elements, penPoints, selectedIds, selectionBox, addElement, selectElement, setActiveTool, setSelectedIds, toolDefaults]
+    [drawingShape, elements, penPoints, selectedIds, selectionBox, addElement, selectElement, setSelectedIds, toolDefaults]
+  );
+
+  // Double-click to finalize arrow drawing
+  const onCanvasDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      if (activeTool !== 'arrow') return;
+      if (!drawingArrow) return;
+
+      // We need at least 2 confirmed points. The last point is the cursor preview.
+      // On double-click, the previous single-click already added a point, so
+      // drawingArrow has [start, ...intermediates, cursor].
+      // Use all points except the last cursor preview as the finalized path.
+      const confirmedPoints = drawingArrow.length >= 2 ? drawingArrow.slice(0, -1) : drawingArrow;
+
+      if (confirmedPoints.length < 2) {
+        setDrawingArrow(null);
+        return;
+      }
+
+      // Determine snap connections for first and last points
+      const firstPoint = confirmedPoints[0];
+      const lastPoint = confirmedPoints[confirmedPoints.length - 1];
+      const startSnap = getSnapTarget(firstPoint, elements);
+      const endSnap = getSnapTarget(lastPoint, elements);
+
+      addElement({
+        type: 'arrow',
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        properties: {
+          points: confirmedPoints,
+          color: toolDefaults.arrow.color,
+          strokeWidth: toolDefaults.arrow.strokeWidth,
+          startElementId: startSnap?.elementId,
+          endElementId: endSnap?.elementId,
+        },
+      });
+      setDrawingArrow(null);
+      void event;
+    },
+    [activeTool, drawingArrow, elements, addElement, toolDefaults]
   );
 
   const onElementPointerDown = useCallback(
@@ -652,6 +827,8 @@ export function Whiteboard() {
       let frame = 0;
       let lastEvent: PointerEvent | null = null;
 
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
       const onMove = (nextEvent: PointerEvent) => {
         lastEvent = nextEvent;
         if (frame) return;
@@ -661,21 +838,32 @@ export function Whiteboard() {
             return;
           }
 
-          const dx = (lastEvent.clientX - startX) / viewState.zoom;
-          const dy = (lastEvent.clientY - startY) / viewState.zoom;
-          const alignment = getAlignmentResult(selectionBounds, staticElements, dx, dy, 6 / viewState.zoom);
-          updateElements(
-            draggableElements.map((candidate) => {
-              const initial = startPositions.get(candidate.id)!;
-              return {
-                id: candidate.id,
-                updates: {
-                  x: initial.x + alignment.dx,
-                  y: initial.y + alignment.dy,
-                },
-              };
-            })
+          const currentViewState = useStore.getState().viewState;
+          const dx = (lastEvent.clientX - startX) / currentViewState.zoom;
+          const dy = (lastEvent.clientY - startY) / currentViewState.zoom;
+          const alignment = getAlignmentResult(selectionBounds, staticElements, dx, dy, 6 / currentViewState.zoom);
+          const movedUpdates = draggableElements.map((candidate) => {
+            const initial = startPositions.get(candidate.id)!;
+            return {
+              id: candidate.id,
+              updates: {
+                x: initial.x + alignment.dx,
+                y: initial.y + alignment.dy,
+              },
+            };
+          });
+
+          // Also update connected arrows
+          const arrowUpdates = computeConnectedArrowUpdates(
+            useStore.getState().elements,
+            draggableElements.map((e) => ({
+              ...e,
+              x: (startPositions.get(e.id)?.x ?? e.x) + alignment.dx,
+              y: (startPositions.get(e.id)?.y ?? e.y) + alignment.dy,
+            }))
           );
+
+          updateElements([...movedUpdates, ...arrowUpdates]);
           setAlignmentGuides(alignment.guides);
           frame = 0;
         });
@@ -693,7 +881,7 @@ export function Whiteboard() {
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     },
-    [activeTool, historyPush, selectElement, setSelectedIds, toCanvas, updateElements, viewState.zoom]
+    [activeTool, historyPush, selectElement, setSelectedIds, toCanvas, updateElements]
   );
 
   const onElementContextMenu = useCallback(
@@ -734,6 +922,14 @@ export function Whiteboard() {
     ? elements.find((element) => element.id === contextMenu.elementId)
     : null;
 
+  // Sort: pen elements always above image elements, then by zIndex
+  const sortedElements = [...elements].sort((a, b) => {
+    const layerA = a.type === 'pen' ? 1 : 0;
+    const layerB = b.type === 'pen' ? 1 : 0;
+    if (layerA !== layerB) return layerA - layerB;
+    return a.zIndex - b.zIndex;
+  });
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
       <div
@@ -754,6 +950,7 @@ export function Whiteboard() {
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onCanvasPointerMove}
         onPointerUp={onCanvasPointerUp}
+        onDoubleClick={onCanvasDoubleClick}
         onContextMenu={(event) => event.preventDefault()}
       >
         <div
@@ -821,23 +1018,25 @@ export function Whiteboard() {
             </svg>
           )}
 
-          {drawingArrow && drawingArrow.length === 2 && (
+          {drawingArrow && drawingArrow.length >= 2 && (
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
               <defs>
                 <marker id="arrow-preview" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
                   <polygon points="0 0, 8 3, 0 6" fill="var(--text-primary)" />
                 </marker>
               </defs>
-              <line
-                x1={drawingArrow[0].x}
-                y1={drawingArrow[0].y}
-                x2={drawingArrow[1].x}
-                y2={drawingArrow[1].y}
+              <path
+                d={drawingArrow.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ')}
+                fill="none"
                 stroke="var(--text-primary)"
                 strokeWidth={2}
                 strokeDasharray="6 4"
                 markerEnd="url(#arrow-preview)"
               />
+              {/* Show click dots for confirmed intermediate points */}
+              {drawingArrow.slice(0, -1).map((pt, idx) => (
+                <circle key={idx} cx={pt.x} cy={pt.y} r={3} fill="var(--primary)" />
+              ))}
             </svg>
           )}
 
@@ -881,7 +1080,7 @@ export function Whiteboard() {
             />
           )}
 
-          {[...elements].sort((a, b) => a.zIndex - b.zIndex).map((element) => {
+          {sortedElements.map((element) => {
             const isSelected = selectedIds.includes(element.id);
             const sharedProps = {
               key: element.id,
@@ -923,6 +1122,7 @@ export function Whiteboard() {
             if (element.type === 'sticky') return wrapped(<StickyElementComponent element={element} {...sharedProps} />);
             if (element.type === 'code') return wrapped(<CodeBlockElement element={element} {...sharedProps} />);
             if (element.type === 'image') return wrapped(<ImageElementComponent element={element} {...sharedProps} />);
+            if (element.type === 'chart') return wrapped(<ChartElementComponent element={element} {...sharedProps} />);
             if (element.type === 'text') {
               return wrapped(
                 <TextElementComponent
@@ -1121,6 +1321,68 @@ export function Whiteboard() {
     </div>
   );
 }
+
+// ── Connected arrow update helper ────────────────────────────────────────────
+function computeConnectedArrowUpdates(
+  allElements: WhiteboardElement[],
+  movedElements: WhiteboardElement[]
+): Array<{ id: string; updates: Partial<WhiteboardElement> }> {
+  const movedMap = new Map(movedElements.map((e) => [e.id, e]));
+  const updates: Array<{ id: string; updates: Partial<WhiteboardElement> }> = [];
+
+  for (const el of allElements) {
+    if (el.type !== 'arrow') continue;
+    const props = el.properties;
+    let points = [...props.points];
+    let changed = false;
+
+    if (props.startElementId && movedMap.has(props.startElementId)) {
+      const movedEl = movedMap.get(props.startElementId)!;
+      const anchor = getAnchorForElement(movedEl, points[0]);
+      points[0] = anchor;
+      changed = true;
+    }
+
+    if (props.endElementId && movedMap.has(props.endElementId)) {
+      const movedEl = movedMap.get(props.endElementId)!;
+      const anchor = getAnchorForElement(movedEl, points[points.length - 1]);
+      points[points.length - 1] = anchor;
+      changed = true;
+    }
+
+    if (changed) {
+      updates.push({
+        id: el.id,
+        updates: { properties: { ...props, points } },
+      });
+    }
+  }
+
+  return updates;
+}
+
+function getAnchorForElement(el: WhiteboardElement, nearPoint: Point): Point {
+  const cx = el.x + el.width / 2;
+  const cy = el.y + el.height / 2;
+  const anchors: Point[] = [
+    { x: cx, y: el.y },
+    { x: cx, y: el.y + el.height },
+    { x: el.x, y: cy },
+    { x: el.x + el.width, y: cy },
+  ];
+  let best = anchors[0];
+  let bestDist = Infinity;
+  for (const anchor of anchors) {
+    const dist = Math.hypot(nearPoint.x - anchor.x, nearPoint.y - anchor.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = anchor;
+    }
+  }
+  return best;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;

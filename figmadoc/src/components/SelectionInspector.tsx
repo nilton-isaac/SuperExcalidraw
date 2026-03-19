@@ -3,6 +3,8 @@ import { useStore } from '../store/useStore';
 import type {
   ArrowElement,
   ArrowHead,
+  ChartElement,
+  ChartType,
   CodeElement,
   ImageElement,
   PenElement,
@@ -200,6 +202,9 @@ export function SelectionInspector() {
       )}
       {element.type === 'code' && (
         <CodeInspector element={element} updateElement={updateElement} />
+      )}
+      {element.type === 'chart' && (
+        <ChartInspector element={element} updateElement={updateElement} />
       )}
       <LayerActions
         onBringToFront={bringSelectionToFront}
@@ -441,6 +446,37 @@ function CodeInspector({
       <RotationField
         value={element.rotation ?? 0}
         onChange={(value) => updateElement(element.id, { rotation: value })}
+      />
+    </>
+  );
+}
+
+function ChartInspector({
+  element,
+  updateElement,
+}: {
+  element: ChartElement;
+  updateElement: (id: string, updates: Partial<WhiteboardElement>) => void;
+}) {
+  return (
+    <>
+      <FieldLabel>Chart Type</FieldLabel>
+      <SegmentedControl
+        value={element.properties.chartType}
+        options={[
+          { value: 'bar', label: 'Bar' },
+          { value: 'line', label: 'Line' },
+          { value: 'pie', label: 'Pie' },
+        ]}
+        onChange={(value) => patchProperties(element, updateElement, { chartType: value as ChartType })}
+      />
+      <FieldLabel>Title</FieldLabel>
+      <input
+        type="text"
+        value={element.properties.title ?? ''}
+        onChange={(event) => patchProperties(element, updateElement, { title: event.target.value })}
+        placeholder="Chart title"
+        style={inputStyle}
       />
     </>
   );
@@ -726,11 +762,13 @@ function InspectorShell({
         position: 'absolute',
         top: 16,
         right: 16,
-        width: 280,
+        width: 240,
         maxHeight: 'calc(100% - 58px)',
         overflowY: 'auto',
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border-color)',
+        background: 'var(--glass-bg)',
+        backdropFilter: 'var(--glass-blur)',
+        WebkitBackdropFilter: 'var(--glass-blur)',
+        border: '1px solid var(--glass-border)',
         borderRadius: 16,
         boxShadow: 'var(--shadow-lg)',
         zIndex: 1001,
@@ -741,18 +779,20 @@ function InspectorShell({
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '14px 14px 12px',
-          borderBottom: '1px solid var(--border-color)',
+          padding: '10px 10px 8px',
+          borderBottom: '1px solid var(--glass-border)',
           position: 'sticky',
           top: 0,
-          background: 'var(--bg-elevated)',
+          background: 'var(--glass-bg)',
+          backdropFilter: 'var(--glass-blur)',
+          WebkitBackdropFilter: 'var(--glass-blur)',
         }}
       >
         <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
+            width: 28,
+            height: 28,
+            borderRadius: 8,
             background: 'var(--primary)',
             color: 'var(--primary-contrast)',
             display: 'flex',
@@ -760,17 +800,17 @@ function InspectorShell({
             justifyContent: 'center',
           }}
         >
-          <Icon name={icon} size={18} filled />
+          <Icon name={icon} size={15} filled />
         </div>
         <div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Inspector
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gap: 12, padding: 14 }}>{children}</div>
+      <div style={{ display: 'grid', gap: 10, padding: 10 }}>{children}</div>
     </aside>
   );
 }
@@ -813,6 +853,7 @@ function iconForElement(element: WhiteboardElement) {
   if (element.type === 'arrow') return 'arrow_right_alt';
   if (element.type === 'pen') return 'edit';
   if (element.type === 'image') return 'image';
+  if (element.type === 'chart') return 'bar_chart';
   return 'code';
 }
 
@@ -823,6 +864,7 @@ function labelForElement(element: WhiteboardElement) {
   if (element.type === 'arrow') return 'Arrow';
   if (element.type === 'pen') return 'Pen';
   if (element.type === 'image') return 'Image';
+  if (element.type === 'chart') return 'Chart';
   return 'Code Block';
 }
 

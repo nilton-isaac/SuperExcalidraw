@@ -28,6 +28,9 @@ const TOOL_GROUPS: Array<Array<{ tool: Tool; icon: string; label: string }>> = [
     { tool: 'pen', icon: 'edit', label: 'Pen (P)' },
     { tool: 'eraser', icon: 'backspace', label: 'Eraser (E)' },
   ],
+  [
+    { tool: 'chart', icon: 'bar_chart', label: 'Chart' },
+  ],
 ];
 
 export function Header() {
