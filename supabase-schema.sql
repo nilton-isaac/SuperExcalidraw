@@ -76,3 +76,10 @@ AS $$
   FROM public.boards
   WHERE user_id = auth.uid();
 $$;
+
+-- ============================================================
+-- Permissões — necessário para os roles acessarem a tabela
+-- ============================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON public.boards TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_my_board_stats() TO authenticated;
