@@ -95,3 +95,11 @@ export interface DocPage {
 }
 
 export interface ViewState { x: number; y: number; zoom: number; }
+
+// Cloud integration
+export interface CloudBoardMeta {
+  id: string;          // Supabase row UUID
+  local_id: string;    // mirrors local SavedBoard.id
+  name: string;
+  updated_at: string;  // ISO timestamp from Supabase
+}

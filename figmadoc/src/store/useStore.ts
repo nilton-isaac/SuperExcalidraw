@@ -159,6 +159,8 @@ interface SavedBoard {
   name: string;
   updatedAt: string;
   snapshot: BoardSnapshot;
+  cloudId?: string;         // Supabase row UUID, presente se já foi enviado para a nuvem
+  cloudSyncedAt?: string;   // ISO timestamp do último push para a nuvem
 }
 
 const makeInitialViewState = (): ViewState => ({ x: 0, y: 0, zoom: 1 });
@@ -213,6 +215,8 @@ const normalizeSavedBoards = (boards: SavedBoard[] | undefined): SavedBoard[] =>
   (boards ?? []).map((board) => ({
     ...board,
     name: normalizeLegacyTitle(board.name),
+    cloudId: board.cloudId,
+    cloudSyncedAt: board.cloudSyncedAt,
     snapshot: {
       ...board.snapshot,
       pages: normalizePages(board.snapshot.pages ?? makeInitialPages()),
@@ -316,6 +320,8 @@ interface AppStore {
   createBoard: (title?: string) => void;
   importBoard: (data: unknown) => void;
   importAllBoards: (data: unknown) => void;
+  loadBoardFromSnapshot: (snapshot: BoardSnapshot, meta: { id?: string; name: string; cloudId?: string }) => void;
+  markBoardCloudSynced: (localId: string, cloudId: string) => void;
 
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
@@ -788,6 +794,50 @@ export const useStore = create<AppStore>()(
         }));
       },
 
+      loadBoardFromSnapshot: (snapshot, meta) => {
+        const id = meta.id ?? uuidv4();
+        const pages = normalizePages(snapshot.pages);
+        const newBoard: SavedBoard = {
+          id,
+          name: meta.name,
+          updatedAt: new Date().toISOString(),
+          snapshot,
+          cloudId: meta.cloudId,
+          cloudSyncedAt: meta.cloudId ? new Date().toISOString() : undefined,
+        };
+        set((current) => ({
+          elements: snapshot.elements,
+          pages,
+          activePageId: snapshot.activePageId ?? findFirstPageId(pages),
+          documentTitle: snapshot.documentTitle,
+          activeBoardId: id,
+          theme: snapshot.theme,
+          layoutMode: snapshot.layoutMode,
+          splitRatio: snapshot.splitRatio,
+          panelMode: snapshot.panelMode,
+          docsNavigatorCollapsed: snapshot.docsNavigatorCollapsed,
+          viewState: snapshot.viewState,
+          selectedIds: [],
+          activeTool: 'select',
+          undoPast: [],
+          undoFuture: [],
+          clipboard: [],
+          savedBoards: [
+            newBoard,
+            ...current.savedBoards.filter((b) => b.id !== id),
+          ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+        }));
+      },
+
+      markBoardCloudSynced: (localId, cloudId) =>
+        set((current) => ({
+          savedBoards: current.savedBoards.map((b) =>
+            b.id === localId
+              ? { ...b, cloudId, cloudSyncedAt: new Date().toISOString() }
+              : b
+          ),
+        })),
+
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
       setLayoutMode: (layoutMode) => set({ layoutMode }),
@@ -814,7 +864,7 @@ export const useStore = create<AppStore>()(
     {
       name: APP_STORAGE_KEY,
       storage: createJSONStorage(() => fallbackStorage),
-      version: 7,
+      version: 8,
       migrate: (persistedState) => {
         const state = persistedState as Partial<AppStore> | undefined;
         const pages = state?.pages ? normalizePages(state.pages) : makeInitialPages();

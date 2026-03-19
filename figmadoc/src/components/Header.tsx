@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
+import { useAuthStore } from '../store/useAuthStore';
 import type { Tool } from '../types';
 import { Icon } from './Icon';
+import { AuthModal } from './AuthModal';
 
 const TOOL_GROUPS: Array<Array<{ tool: Tool; icon: string; label: string }>> = [
   [
@@ -53,9 +55,12 @@ export function Header() {
     createBoard,
   } = useStore();
 
+  const { status: authStatus } = useAuthStore();
+
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(documentTitle);
   const [boardsOpen, setBoardsOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const [boardNameDraft, setBoardNameDraft] = useState(documentTitle);
 
   useEffect(() => {
@@ -85,22 +90,11 @@ export function Header() {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 0 auto', marginRight: 6 }}>
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 10,
-            border: '1px solid var(--border-strong)',
-            background: 'var(--primary)',
-            color: 'var(--primary-contrast)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="description" size={18} filled />
-        </div>
+        <img
+          src="/logo.png"
+          alt="Logo"
+          style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'contain', flexShrink: 0 }}
+        />
 
         {titleEditing ? (
           <input
@@ -246,6 +240,15 @@ export function Header() {
           New
         </ActionBtn>
 
+        <Divider />
+
+        <ActionBtn
+          icon={authStatus === 'authenticated' ? 'cloud_done' : 'cloud_off'}
+          onClick={() => setAuthOpen(true)}
+        >
+          {authStatus === 'authenticated' ? 'Nuvem' : 'Entrar'}
+        </ActionBtn>
+
       </div>
 
       {boardsOpen && (
@@ -265,6 +268,8 @@ export function Header() {
           importAllBoards={useStore.getState().importAllBoards}
         />
       )}
+
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
     </header>
   );
 }
@@ -351,7 +356,7 @@ function BoardManager({
   activeBoardId: string | null;
   boardNameDraft: string;
   documentTitle: string;
-  savedBoards: Array<{ id: string; name: string; updatedAt: string }>;
+  savedBoards: Array<{ id: string; name: string; updatedAt: string; cloudId?: string; cloudSyncedAt?: string }>;
   onBoardNameDraftChange: (value: string) => void;
   onClose: () => void;
   onCreateBoard: () => void;
@@ -364,6 +369,71 @@ function BoardManager({
 }) {
   const importSingleRef = useRef<HTMLInputElement>(null);
   const importAllRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'local' | 'cloud'>('local');
+  const [cloudActionLoading, setCloudActionLoading] = useState<string | null>(null);
+
+  const {
+    status: authStatus,
+    cloudBoards,
+    cloudBoardsLoading,
+    cloudError,
+    fetchCloudBoards,
+    pushBoardToCloud,
+    pullBoardFromCloud,
+    deleteCloudBoard,
+    clearCloudError,
+  } = useAuthStore();
+
+  const { markBoardCloudSynced, loadBoardFromSnapshot, activeBoardId: currentBoardId, savedBoards: allBoards } = useStore.getState();
+
+  // Carrega boards da nuvem ao abrir a aba
+  useEffect(() => {
+    if (activeTab === 'cloud' && authStatus === 'authenticated') {
+      fetchCloudBoards();
+    }
+  }, [activeTab, authStatus, fetchCloudBoards]);
+
+  const handlePushToCloud = async (boardId: string) => {
+    const board = allBoards.find((b) => b.id === boardId);
+    if (!board) return;
+    setCloudActionLoading(`push-${boardId}`);
+    try {
+      const cloudId = await pushBoardToCloud(board);
+      markBoardCloudSynced(boardId, cloudId);
+    } catch {
+      // error shown via cloudError state
+    } finally {
+      setCloudActionLoading(null);
+    }
+  };
+
+  const handlePullFromCloud = async (cloudId: string, cloudName: string, localId: string) => {
+    setCloudActionLoading(`pull-${cloudId}`);
+    try {
+      const { snapshot, name, localId: remoteLocalId } = await pullBoardFromCloud(cloudId);
+      loadBoardFromSnapshot(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        snapshot as any,
+        { id: remoteLocalId || localId, name: name || cloudName, cloudId }
+      );
+      onClose();
+    } catch {
+      // error shown via cloudError state
+    } finally {
+      setCloudActionLoading(null);
+    }
+  };
+
+  const handleDeleteCloud = async (cloudId: string) => {
+    setCloudActionLoading(`del-${cloudId}`);
+    try {
+      await deleteCloudBoard(cloudId);
+    } catch {
+      // error shown via cloudError state
+    } finally {
+      setCloudActionLoading(null);
+    }
+  };
 
   const handleFile = (file: File, mode: 'single' | 'all') => {
     const reader = new FileReader();
@@ -444,7 +514,7 @@ function BoardManager({
           position: 'fixed',
           top: 76,
           right: 16,
-          width: 420,
+          width: 440,
           maxHeight: 'calc(100vh - 92px)',
           overflow: 'hidden',
           borderRadius: 18,
@@ -468,83 +538,223 @@ function BoardManager({
           <IconBtn icon="close" title="Close" onClick={onClose} />
         </div>
 
-        {/* Storage bar */}
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
-          <StorageBar />
+        {/* Tabs: Local / Cloud */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+          {(['local', 'cloud'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); if (cloudError) clearCloudError(); }}
+              style={{
+                flex: 1,
+                height: 40,
+                border: 'none',
+                borderBottom: activeTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
+                background: 'transparent',
+                color: activeTab === tab ? 'var(--primary)' : 'var(--text-secondary)',
+                fontWeight: activeTab === tab ? 700 : 500,
+                fontSize: 13,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.12s',
+              }}
+            >
+              <Icon name={tab === 'local' ? 'hard_drive' : authStatus === 'authenticated' ? 'cloud_done' : 'cloud_off'} size={16} />
+              {tab === 'local' ? 'Local' : 'Nuvem'}
+            </button>
+          ))}
         </div>
 
-        {/* Actions */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)', display: 'grid', gap: 10, flexShrink: 0 }}>
-          <input
-            value={boardNameDraft}
-            onChange={(event) => onBoardNameDraftChange(event.target.value)}
-            placeholder="Board name"
-            style={{
-              width: '100%',
-              height: 40,
-              borderRadius: 10,
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-              padding: '0 12px',
-              fontSize: 13,
-              outline: 'none',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionBtn icon="save" onClick={onSaveCurrent}>Save</ActionBtn>
-            <ActionBtn icon="library_add" onClick={onSaveAs}>Save As</ActionBtn>
-            <ActionBtn icon="add_box" onClick={onCreateBoard}>New Board</ActionBtn>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionBtn icon="download" onClick={exportCurrent}>Export</ActionBtn>
-            <ActionBtn icon="upload" onClick={() => importSingleRef.current?.click()}>Import</ActionBtn>
-            <ActionBtn icon="backup" onClick={exportAll}>Export All</ActionBtn>
-            <ActionBtn icon="cloud_download" onClick={() => importAllRef.current?.click()}>Import All</ActionBtn>
-          </div>
-        </div>
-
-        <div style={{ overflowY: 'auto', padding: 10, display: 'grid', gap: 8 }}>
-          {savedBoards.length === 0 ? (
-            <div style={{ padding: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              No saved boards yet. Use `Save Current` to keep different whiteboards inside the browser.
+        {/* ── LOCAL TAB ── */}
+        {activeTab === 'local' && (
+          <>
+            {/* Storage bar */}
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+              <StorageBar />
             </div>
-          ) : (
-            savedBoards.map((board) => (
-              <div
-                key={board.id}
+
+            {/* Actions */}
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)', display: 'grid', gap: 10, flexShrink: 0 }}>
+              <input
+                value={boardNameDraft}
+                onChange={(event) => onBoardNameDraftChange(event.target.value)}
+                placeholder="Board name"
                 style={{
+                  width: '100%',
+                  height: 40,
+                  borderRadius: 10,
                   border: '1px solid var(--border-color)',
-                  borderRadius: 14,
-                  padding: 12,
-                  display: 'grid',
-                  gap: 8,
-                  background: board.id === activeBoardId ? 'var(--bg-tertiary)' : 'transparent',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  padding: '0 12px',
+                  fontSize: 13,
+                  outline: 'none',
                 }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {board.name}
+              />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionBtn icon="save" onClick={onSaveCurrent}>Save</ActionBtn>
+                <ActionBtn icon="library_add" onClick={onSaveAs}>Save As</ActionBtn>
+                <ActionBtn icon="add_box" onClick={onCreateBoard}>New Board</ActionBtn>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionBtn icon="download" onClick={exportCurrent}>Export</ActionBtn>
+                <ActionBtn icon="upload" onClick={() => importSingleRef.current?.click()}>Import</ActionBtn>
+                <ActionBtn icon="backup" onClick={exportAll}>Export All</ActionBtn>
+                <ActionBtn icon="cloud_download" onClick={() => importAllRef.current?.click()}>Import All</ActionBtn>
+              </div>
+            </div>
+
+            <div style={{ overflowY: 'auto', padding: 10, display: 'grid', gap: 8 }}>
+              {savedBoards.length === 0 ? (
+                <div style={{ padding: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  Nenhuma board salva ainda. Use "Save" para manter diferentes whiteboards no navegador.
+                </div>
+              ) : (
+                savedBoards.map((board) => (
+                  <div
+                    key={board.id}
+                    style={{
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 14,
+                      padding: 12,
+                      display: 'grid',
+                      gap: 8,
+                      background: board.id === activeBoardId ? 'var(--bg-tertiary)' : 'transparent',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {board.name}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(board.updatedAt).toLocaleString()}</span>
+                          {board.cloudId && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 2 }}>
+                              <Icon name="cloud_done" size={11} /> Nuvem
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {board.id === activeBoardId && (
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>
+                          Atual
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {new Date(board.updatedAt).toLocaleString()}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <ActionBtn icon="folder_open" onClick={() => onLoadBoard(board.id)}>Open</ActionBtn>
+                      {authStatus === 'authenticated' && (
+                        <ActionBtn
+                          icon={cloudActionLoading === `push-${board.id}` ? 'sync' : 'cloud_upload'}
+                          onClick={() => handlePushToCloud(board.id)}
+                        >
+                          {board.cloudId ? 'Sincronizar' : 'Enviar'}
+                        </ActionBtn>
+                      )}
+                      <ActionBtn icon="delete" onClick={() => onDeleteBoard(board.id)}>Delete</ActionBtn>
                     </div>
                   </div>
-                  {board.id === activeBoardId && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      Current
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <ActionBtn icon="folder_open" onClick={() => onLoadBoard(board.id)}>Open</ActionBtn>
-                  <ActionBtn icon="delete" onClick={() => onDeleteBoard(board.id)}>Delete</ActionBtn>
+                ))
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── CLOUD TAB ── */}
+        {activeTab === 'cloud' && (
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {authStatus !== 'authenticated' ? (
+              <div style={{ padding: 24, textAlign: 'center', display: 'grid', gap: 12 }}>
+                <Icon name="cloud_off" size={48} style={{ color: 'var(--text-muted)', margin: '0 auto' }} />
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Faça login para acessar a nuvem</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  Salve suas boards na nuvem e acesse de qualquer dispositivo.
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ) : (
+              <>
+                {/* Cloud actions */}
+                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                  <ActionBtn icon="refresh" onClick={fetchCloudBoards}>Atualizar</ActionBtn>
+                  {currentBoardId && (
+                    <ActionBtn
+                      icon={cloudActionLoading === `push-${currentBoardId}` ? 'sync' : 'cloud_upload'}
+                      onClick={() => handlePushToCloud(currentBoardId)}
+                    >
+                      Enviar board atual
+                    </ActionBtn>
+                  )}
+                </div>
+
+                {/* Cloud error */}
+                {cloudError && (
+                  <div style={{ margin: '8px 18px', padding: '8px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 12, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="error" size={14} />
+                    {cloudError}
+                    <button onClick={clearCloudError} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}>
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Cloud list */}
+                <div style={{ overflowY: 'auto', padding: 10, display: 'grid', gap: 8 }}>
+                  {cloudBoardsLoading ? (
+                    <div style={{ padding: 18, fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Icon name="sync" size={16} className="spin" /> Carregando...
+                    </div>
+                  ) : cloudBoards.length === 0 ? (
+                    <div style={{ padding: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                      Nenhuma board na nuvem ainda. Use "Enviar board atual" para fazer upload.
+                    </div>
+                  ) : (
+                    cloudBoards.map((cb) => (
+                      <div
+                        key={cb.id}
+                        style={{
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 14,
+                          padding: 12,
+                          display: 'grid',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {cb.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              {new Date(cb.updated_at).toLocaleString()}
+                            </div>
+                          </div>
+                          <Icon name="cloud" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <ActionBtn
+                            icon={cloudActionLoading === `pull-${cb.id}` ? 'sync' : 'cloud_download'}
+                            onClick={() => handlePullFromCloud(cb.id, cb.name, cb.local_id)}
+                          >
+                            Baixar
+                          </ActionBtn>
+                          <ActionBtn
+                            icon={cloudActionLoading === `del-${cb.id}` ? 'sync' : 'delete'}
+                            onClick={() => handleDeleteCloud(cb.id)}
+                          >
+                            Remover
+                          </ActionBtn>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

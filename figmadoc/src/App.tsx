@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useStore } from './store/useStore';
+import { useAuthStore } from './store/useAuthStore';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { Whiteboard } from './components/Whiteboard';
@@ -7,6 +8,11 @@ import './index.css';
 
 export default function App() {
   const { theme, layoutMode, splitRatio, panelMode, setSplitRatio } = useStore();
+  const initialize = useAuthStore((s) => s.initialize);
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
 
   // Apply theme to <html>
   useEffect(() => {
