@@ -37,7 +37,17 @@ interface AuthStore {
   pushBoardToCloud: (board: SavedBoardForCloud) => Promise<string>;
   pullBoardFromCloud: (cloudId: string) => Promise<{ snapshot: BoardSnapshot; name: string; localId: string }>;
   deleteCloudBoard: (cloudId: string) => Promise<void>;
+  renameCloudBoard: (cloudId: string, newName: string) => Promise<void>;
   clearCloudError: () => void;
+
+  // Autosave
+  autoSaveEnabled: boolean;
+  autoSaveIntervalSeconds: number;
+  lastAutoSave: string | null;
+  autoSaving: boolean;
+  toggleAutoSave: () => void;
+  setAutoSaveInterval: (seconds: number) => void;
+  runAutoSave: (board: SavedBoardForCloud) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -47,6 +57,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   cloudBoards: [],
   cloudBoardsLoading: false,
   cloudError: null,
+  autoSaveEnabled: false,
+  autoSaveIntervalSeconds: 60,
+  lastAutoSave: null,
+  autoSaving: false,
 
   initialize: async () => {
     if (!isSupabaseConfigured) {
@@ -167,5 +181,34 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     await get().fetchCloudBoards();
   },
 
+  renameCloudBoard: async (cloudId, newName) => {
+    set({ cloudError: null });
+    const { error } = await supabase
+      .from('boards')
+      .update({ name: newName })
+      .eq('id', cloudId);
+    if (error) {
+      set({ cloudError: error.message });
+      throw error;
+    }
+    await get().fetchCloudBoards();
+  },
+
   clearCloudError: () => set({ cloudError: null }),
+
+  toggleAutoSave: () => set((s) => ({ autoSaveEnabled: !s.autoSaveEnabled })),
+  setAutoSaveInterval: (seconds) => set({ autoSaveIntervalSeconds: seconds }),
+
+  runAutoSave: async (board) => {
+    if (!get().autoSaveEnabled || get().autoSaving) return;
+    set({ autoSaving: true });
+    try {
+      await get().pushBoardToCloud(board);
+      set({ lastAutoSave: new Date().toISOString() });
+    } catch {
+      // silencioso — não interrompe o usuário
+    } finally {
+      set({ autoSaving: false });
+    }
+  },
 }));

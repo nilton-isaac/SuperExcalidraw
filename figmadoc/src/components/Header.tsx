@@ -381,10 +381,20 @@ function BoardManager({
     pushBoardToCloud,
     pullBoardFromCloud,
     deleteCloudBoard,
+    renameCloudBoard,
     clearCloudError,
+    autoSaveEnabled,
+    autoSaveIntervalSeconds,
+    lastAutoSave,
+    autoSaving,
+    toggleAutoSave,
+    setAutoSaveInterval,
   } = useAuthStore();
 
   const { markBoardCloudSynced, loadBoardFromSnapshot, activeBoardId: currentBoardId, savedBoards: allBoards } = useStore.getState();
+  const importCloudRef = useRef<HTMLInputElement>(null);
+  const [renamingCloudId, setRenamingCloudId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
 
   // Carrega boards da nuvem ao abrir a aba
   useEffect(() => {
@@ -433,6 +443,56 @@ function BoardManager({
     } finally {
       setCloudActionLoading(null);
     }
+  };
+
+  const handleRenameCloud = async (cloudId: string) => {
+    const name = renameDraft.trim();
+    if (!name) { setRenamingCloudId(null); return; }
+    setCloudActionLoading(`rename-${cloudId}`);
+    try {
+      await renameCloudBoard(cloudId, name);
+    } catch {
+      // error shown via cloudError state
+    } finally {
+      setCloudActionLoading(null);
+      setRenamingCloudId(null);
+    }
+  };
+
+  const handleExportCloud = async (cloudId: string, cloudName: string) => {
+    setCloudActionLoading(`export-${cloudId}`);
+    try {
+      const { snapshot, name } = await pullBoardFromCloud(cloudId);
+      const payload = { format: 'superexcalidraw-board', version: 1, ...snapshot, documentTitle: name, exportedAt: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${(name || cloudName).replace(/[^a-z0-9_\-. ]/gi, '_')}.board.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      // error shown via cloudError state
+    } finally {
+      setCloudActionLoading(null);
+    }
+  };
+
+  const handleImportToCloud = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string) as Record<string, unknown>;
+        const boards = data.format === 'superexcalidraw-backup' && Array.isArray(data.boards)
+          ? (data.boards as Array<{ id: string; name: string; updatedAt: string; snapshot: Record<string, unknown> }>)
+          : [{ id: crypto.randomUUID(), name: String(data.documentTitle ?? 'Imported'), updatedAt: new Date().toISOString(), snapshot: data }];
+        for (const b of boards) {
+          await pushBoardToCloud({ id: b.id, name: b.name, updatedAt: b.updatedAt, snapshot: b.snapshot });
+        }
+      } catch {
+        // error shown via cloudError state
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleFile = (file: File, mode: 'single' | 'all') => {
@@ -666,6 +726,12 @@ function BoardManager({
         {/* ── CLOUD TAB ── */}
         {activeTab === 'cloud' && (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+
+            {/* Hidden import-to-cloud input */}
+            <input ref={importCloudRef} type="file" accept=".json" style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportToCloud(f); e.target.value = ''; }}
+            />
+
             {authStatus !== 'authenticated' ? (
               <div style={{ padding: 24, textAlign: 'center', display: 'grid', gap: 12 }}>
                 <Icon name="cloud_off" size={48} style={{ color: 'var(--text-muted)', margin: '0 auto' }} />
@@ -676,22 +742,57 @@ function BoardManager({
               </div>
             ) : (
               <>
-                {/* Cloud actions */}
-                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-                  <ActionBtn icon="refresh" onClick={fetchCloudBoards}>Atualizar</ActionBtn>
-                  {currentBoardId && (
-                    <ActionBtn
-                      icon={cloudActionLoading === `push-${currentBoardId}` ? 'sync' : 'cloud_upload'}
-                      onClick={() => handlePushToCloud(currentBoardId)}
+                {/* Autosave bar */}
+                <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border-color)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={toggleAutoSave}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8,
+                      border: '1px solid var(--border-color)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                      background: autoSaveEnabled ? 'var(--primary)' : 'var(--bg-tertiary)',
+                      color: autoSaveEnabled ? 'var(--primary-contrast)' : 'var(--text-primary)',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <Icon name={autoSaving ? 'sync' : autoSaveEnabled ? 'cloud_done' : 'cloud_off'} size={14} className={autoSaving ? 'spin' : undefined} />
+                    Autosave {autoSaveEnabled ? 'ON' : 'OFF'}
+                  </button>
+
+                  {autoSaveEnabled && (
+                    <select
+                      value={autoSaveIntervalSeconds}
+                      onChange={(e) => setAutoSaveInterval(Number(e.target.value))}
+                      style={{ height: 28, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: 11, padding: '0 6px', cursor: 'pointer', outline: 'none' }}
                     >
-                      Enviar board atual
-                    </ActionBtn>
+                      <option value={30}>30s</option>
+                      <option value={60}>1 min</option>
+                      <option value={120}>2 min</option>
+                      <option value={300}>5 min</option>
+                    </select>
                   )}
+
+                  {lastAutoSave && (
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      Salvo {new Date(lastAutoSave).toLocaleTimeString()}
+                    </span>
+                  )}
+                </div>
+
+                {/* Cloud actions */}
+                <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+                  <ActionBtn icon="refresh" onClick={fetchCloudBoards}>Atualizar</ActionBtn>
+                  <ActionBtn
+                    icon={cloudActionLoading === `push-${currentBoardId}` ? 'sync' : 'cloud_upload'}
+                    onClick={() => currentBoardId ? handlePushToCloud(currentBoardId) : handlePushToCloud(useStore.getState().activeBoardId ?? 'tmp')}
+                  >
+                    Enviar atual
+                  </ActionBtn>
+                  <ActionBtn icon="upload" onClick={() => importCloudRef.current?.click()}>Import → Nuvem</ActionBtn>
                 </div>
 
                 {/* Cloud error */}
                 {cloudError && (
-                  <div style={{ margin: '8px 18px', padding: '8px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 12, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ margin: '8px 18px', padding: '8px 12px', borderRadius: 10, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', fontSize: 12, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                     <Icon name="error" size={14} />
                     {cloudError}
                     <button onClick={clearCloudError} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}>
@@ -708,43 +809,68 @@ function BoardManager({
                     </div>
                   ) : cloudBoards.length === 0 ? (
                     <div style={{ padding: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                      Nenhuma board na nuvem ainda. Use "Enviar board atual" para fazer upload.
+                      Nenhuma board na nuvem ainda. Use "Enviar atual" para fazer upload.
                     </div>
                   ) : (
                     cloudBoards.map((cb) => (
                       <div
                         key={cb.id}
-                        style={{
-                          border: '1px solid var(--border-color)',
-                          borderRadius: 14,
-                          padding: 12,
-                          display: 'grid',
-                          gap: 8,
-                        }}
+                        style={{ border: '1px solid var(--border-color)', borderRadius: 14, padding: 12, display: 'grid', gap: 8 }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {cb.name}
+                        {/* Name row — clicável para renomear */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                          {renamingCloudId === cb.id ? (
+                            <input
+                              autoFocus
+                              value={renameDraft}
+                              onChange={(e) => setRenameDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameCloud(cb.id);
+                                if (e.key === 'Escape') setRenamingCloudId(null);
+                              }}
+                              onBlur={() => handleRenameCloud(cb.id)}
+                              style={{ flex: 1, height: 32, borderRadius: 8, border: '1px solid var(--primary)', background: 'var(--bg-primary)', color: 'var(--text-primary)', padding: '0 8px', fontSize: 13, outline: 'none' }}
+                            />
+                          ) : (
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                title="Clique duplo para renomear"
+                                onDoubleClick={() => { setRenamingCloudId(cb.id); setRenameDraft(cb.name); }}
+                                style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}
+                              >
+                                {cb.name}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(cb.updated_at).toLocaleString()}</div>
                             </div>
-                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              {new Date(cb.updated_at).toLocaleString()}
-                            </div>
-                          </div>
-                          <Icon name="cloud" size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                          )}
+                          <Icon name="cloud" size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
+
+                        {/* Actions row */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           <ActionBtn
-                            icon={cloudActionLoading === `pull-${cb.id}` ? 'sync' : 'cloud_download'}
+                            icon={cloudActionLoading === `pull-${cb.id}` ? 'sync' : 'folder_open'}
                             onClick={() => handlePullFromCloud(cb.id, cb.name, cb.local_id)}
                           >
-                            Baixar
+                            Abrir
+                          </ActionBtn>
+                          <ActionBtn
+                            icon={cloudActionLoading === `export-${cb.id}` ? 'sync' : 'download'}
+                            onClick={() => handleExportCloud(cb.id, cb.name)}
+                          >
+                            Export
+                          </ActionBtn>
+                          <ActionBtn
+                            icon={renamingCloudId === cb.id || cloudActionLoading === `rename-${cb.id}` ? 'sync' : 'edit'}
+                            onClick={() => { setRenamingCloudId(cb.id); setRenameDraft(cb.name); }}
+                          >
+                            Rename
                           </ActionBtn>
                           <ActionBtn
                             icon={cloudActionLoading === `del-${cb.id}` ? 'sync' : 'delete'}
                             onClick={() => handleDeleteCloud(cb.id)}
                           >
-                            Remover
+                            Delete
                           </ActionBtn>
                         </div>
                       </div>

@@ -9,10 +9,29 @@ import './index.css';
 export default function App() {
   const { theme, layoutMode, splitRatio, panelMode, setSplitRatio } = useStore();
   const initialize = useAuthStore((s) => s.initialize);
+  const { autoSaveEnabled, autoSaveIntervalSeconds, status: authStatus, runAutoSave } = useAuthStore();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Autosave para nuvem
+  useEffect(() => {
+    if (!autoSaveEnabled || authStatus !== 'authenticated') return;
+    const interval = setInterval(() => {
+      const state = useStore.getState();
+      const { activeBoardId, savedBoards, elements, pages, activePageId, documentTitle, theme, layoutMode, splitRatio, panelMode, docsNavigatorCollapsed, viewState } = state;
+      const name = savedBoards.find((b) => b.id === activeBoardId)?.name ?? documentTitle;
+      const id = activeBoardId ?? `unsaved-${Date.now()}`;
+      runAutoSave({
+        id,
+        name,
+        updatedAt: new Date().toISOString(),
+        snapshot: { elements, pages, activePageId, documentTitle, theme, layoutMode, splitRatio, panelMode, docsNavigatorCollapsed, viewState },
+      });
+    }, autoSaveIntervalSeconds * 1000);
+    return () => clearInterval(interval);
+  }, [autoSaveEnabled, autoSaveIntervalSeconds, authStatus, runAutoSave]);
 
   // Apply theme to <html>
   useEffect(() => {
