@@ -29,7 +29,8 @@ const TOOL_GROUPS: Array<Array<{ tool: Tool; icon: string; label: string }>> = [
     { tool: 'eraser', icon: 'backspace', label: 'Eraser (E)' },
   ],
   [
-    { tool: 'chart', icon: 'bar_chart', label: 'Chart' },
+    { tool: 'chart', icon: 'bar_chart', label: 'Chart From Table' },
+    { tool: 'table', icon: 'table_chart', label: 'Data Table' },
   ],
 ];
 
@@ -81,22 +82,25 @@ export function Header() {
   return (
     <header
       style={{
-        height: 56,
-        background: 'var(--bg-primary)',
-        borderBottom: '1px solid var(--border-color)',
+        height: 58,
+        background: 'linear-gradient(180deg, color-mix(in srgb, var(--glass-bg) 96%, white), color-mix(in srgb, var(--glass-bg) 76%, transparent))',
+        borderBottom: '1px solid var(--glass-border)',
+        backdropFilter: 'var(--glass-blur)',
+        WebkitBackdropFilter: 'var(--glass-blur)',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 12px',
-        gap: 10,
+        padding: '0 10px',
+        gap: 8,
         flexShrink: 0,
         zIndex: 100,
+        boxShadow: '0 14px 40px rgba(15, 23, 42, 0.08)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 0 auto', marginRight: 6 }}>
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'contain', flexShrink: 0 }}
+          style={{ width: 30, height: 30, borderRadius: 10, objectFit: 'contain', flexShrink: 0 }}
         />
 
         {titleEditing ? (
@@ -116,7 +120,7 @@ export function Header() {
               border: 'none',
               outline: 'none',
               background: 'transparent',
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 700,
               color: 'var(--text-primary)',
               width: 160,
@@ -135,6 +139,7 @@ export function Header() {
               userSelect: 'none',
               color: 'var(--text-primary)',
               whiteSpace: 'nowrap',
+              letterSpacing: '-0.02em',
             }}
             title="Double-click to rename"
           >
@@ -152,6 +157,7 @@ export function Header() {
           justifyContent: 'center',
           flexWrap: 'nowrap',
           overflow: 'hidden',
+          minWidth: 0,
         }}
       >
         {TOOL_GROUPS.map((group, groupIndex) => (
@@ -894,8 +900,8 @@ function Divider() {
     <div
       style={{
         width: 1,
-        height: 22,
-        background: 'var(--border-color)',
+        height: 18,
+        background: 'var(--glass-border)',
         margin: '0 2px',
         flexShrink: 0,
       }}
@@ -923,18 +929,19 @@ function ToolBtn({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        border: active ? '1px solid var(--primary)' : '1px solid transparent',
-        background: active ? 'var(--primary)' : hover ? 'var(--bg-tertiary)' : 'transparent',
+        width: 34,
+        height: 34,
+        borderRadius: 12,
+        border: active ? '1px solid color-mix(in srgb, var(--primary) 68%, transparent)' : '1px solid var(--glass-border)',
+        background: active ? 'var(--primary)' : hover ? 'color-mix(in srgb, var(--glass-bg) 82%, white)' : 'var(--glass-bg)',
         color: active ? 'var(--primary-contrast)' : 'var(--text-primary)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'pointer',
-        transition: 'all 0.12s',
+        transition: 'all 0.16s ease',
         flexShrink: 0,
+        boxShadow: active ? '0 10px 24px rgba(15, 23, 42, 0.16)' : 'none',
       }}
     >
       <Icon name={icon} size={19} filled={active} weight={active ? 600 : 400} />
@@ -964,19 +971,19 @@ function IconBtn({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        width: 34,
-        height: 34,
+        width: 32,
+        height: 32,
         padding: 0,
-        borderRadius: 10,
-        border: active ? '1px solid var(--primary)' : '1px solid transparent',
-        background: active ? 'var(--primary)' : hover && !disabled ? 'var(--bg-tertiary)' : 'transparent',
+        borderRadius: 11,
+        border: active ? '1px solid color-mix(in srgb, var(--primary) 68%, transparent)' : '1px solid var(--glass-border)',
+        background: active ? 'var(--primary)' : hover && !disabled ? 'color-mix(in srgb, var(--glass-bg) 82%, white)' : 'var(--glass-bg)',
         cursor: disabled ? 'default' : 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: disabled ? 'var(--text-muted)' : active ? 'var(--primary-contrast)' : 'var(--text-primary)',
         opacity: disabled ? 0.35 : 1,
-        transition: 'all 0.12s',
+        transition: 'all 0.16s ease',
         flexShrink: 0,
       }}
     >
@@ -1002,18 +1009,18 @@ function ActionBtn({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        padding: '6px 12px',
-        borderRadius: 10,
-        border: '1px solid var(--border-color)',
-        background: hover ? 'var(--bg-tertiary)' : 'transparent',
+        padding: '6px 10px',
+        borderRadius: 999,
+        border: '1px solid var(--glass-border)',
+        background: hover ? 'color-mix(in srgb, var(--glass-bg) 84%, white)' : 'var(--glass-bg)',
         color: 'var(--text-primary)',
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: 600,
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        transition: 'background 0.12s',
+        transition: 'all 0.16s ease',
         flexShrink: 0,
         whiteSpace: 'nowrap',
       }}

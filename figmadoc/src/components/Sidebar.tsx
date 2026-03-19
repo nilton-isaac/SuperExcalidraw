@@ -4,10 +4,13 @@ import { EditorContent, type Editor, useEditor } from '@tiptap/react';
 import Color from '@tiptap/extension-color';
 import FontFamily from '@tiptap/extension-font-family';
 import Highlight from '@tiptap/extension-highlight';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import TextAlign from '@tiptap/extension-text-align';
+import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Typography from '@tiptap/extension-typography';
 import StarterKit from '@tiptap/starter-kit';
@@ -22,6 +25,8 @@ import python from 'highlight.js/lib/languages/python';
 import sql from 'highlight.js/lib/languages/sql';
 import bash from 'highlight.js/lib/languages/bash';
 import yaml from 'highlight.js/lib/languages/yaml';
+import { DataSheet } from '../extensions/DataSheet';
+import { createDefaultDataSheet, serializeDataSheet } from '../lib/dataSheet';
 import { useStore } from '../store/useStore';
 import type { DocPage } from '../types';
 import { Icon } from './Icon';
@@ -31,10 +36,26 @@ lowlight.register({ json, javascript, typescript, xml, css, python, sql, bash, y
 
 // Extends CodeBlockLowlight to add data-language on <pre> (used by CSS ::before label)
 const CodeBlockWithLabel = CodeBlockLowlight.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      codeTheme: {
+        default: 'graphite',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-code-theme') ?? 'graphite',
+        renderHTML: (attributes: Record<string, string>) => ({
+          'data-code-theme': attributes.codeTheme ?? 'graphite',
+        }),
+      },
+    };
+  },
   renderHTML({ node, HTMLAttributes }) {
     return [
       'pre',
-      { ...HTMLAttributes, 'data-language': node.attrs.language ?? 'plaintext' },
+      {
+        ...HTMLAttributes,
+        'data-language': node.attrs.language ?? 'plaintext',
+        'data-code-theme': node.attrs.codeTheme ?? 'graphite',
+      },
       ['code', { class: node.attrs.language ? `language-${node.attrs.language}` : undefined }, 0],
     ];
   },
@@ -56,15 +77,25 @@ const CODE_LANGUAGES = [
 const FONT_OPTIONS = [
   { label: 'Inter', value: 'Inter' },
   { label: 'Space Grotesk', value: 'Space Grotesk' },
+  { label: 'Manrope', value: 'Manrope' },
+  { label: 'Sora', value: 'Sora' },
   { label: 'Poppins', value: 'Poppins' },
   { label: 'DM Sans', value: 'DM Sans' },
+  { label: 'IBM Plex Sans', value: 'IBM Plex Sans' },
   { label: 'Merriweather', value: 'Merriweather' },
   { label: 'Playfair Display', value: 'Playfair Display' },
+  { label: 'Fraunces', value: 'Fraunces' },
   { label: 'JetBrains Mono', value: 'JetBrains Mono' },
   { label: 'Fira Code', value: 'Fira Code' },
 ];
 
-const TEXT_COLORS = ['#000000', '#ffffff', '#6b7280', '#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea'];
+const TEXT_COLORS = ['#111827', '#ffffff', '#6b7280', '#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea', '#14b8a6', '#f43f5e'];
+
+const CODE_THEME_OPTIONS = [
+  { value: 'graphite', label: 'Graphite' },
+  { value: 'ocean', label: 'Ocean' },
+  { value: 'sunset', label: 'Sunset' },
+];
 
 export function Sidebar() {
   const {
@@ -93,8 +124,10 @@ export function Sidebar() {
         width: '100%',
         minWidth: 0,
         height: '100%',
-        background: docsOnly ? 'var(--doc-canvas-bg)' : 'var(--bg-primary)',
-        borderRight: panelMode === 'split' ? '1px solid var(--border-color)' : 'none',
+        background: docsOnly ? 'transparent' : 'linear-gradient(180deg, color-mix(in srgb, var(--glass-bg) 84%, white), color-mix(in srgb, var(--glass-bg) 68%, transparent))',
+        borderRight: panelMode === 'split' ? '1px solid var(--glass-border)' : 'none',
+        backdropFilter: 'var(--glass-blur)',
+        WebkitBackdropFilter: 'var(--glass-blur)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -106,7 +139,7 @@ export function Sidebar() {
     >
       <div
         style={{
-          padding: '12px 16px',
+          padding: '10px 12px',
           borderBottom: `1px solid ${docsOnly ? 'var(--doc-border)' : 'var(--border-color)'}`,
           display: 'flex',
           alignItems: 'center',
@@ -148,7 +181,7 @@ export function Sidebar() {
             flexShrink: 0,
             borderBottom: `1px solid ${docsOnly ? 'var(--doc-border)' : 'var(--border-color)'}`,
             display: 'grid',
-            gap: 8,
+            gap: 6,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -263,13 +296,13 @@ function NavNode({
           alignItems: 'center',
           gap: 8,
           padding: '7px 10px',
-          borderRadius: 10,
+          borderRadius: 14,
           cursor: 'pointer',
           fontSize: 13,
           color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
           fontWeight: isActive ? 600 : 500,
-          background: isActive ? 'var(--bg-tertiary)' : hover ? 'var(--bg-tertiary)' : 'transparent',
-          transition: 'background 0.1s',
+          background: isActive ? 'color-mix(in srgb, var(--glass-bg) 80%, white)' : hover ? 'rgba(255,255,255,0.06)' : 'transparent',
+          transition: 'background 0.12s ease, transform 0.12s ease',
         }}
         onClick={() => onSelect(page.id)}
       >
@@ -350,11 +383,24 @@ function PageEditor({
       TextStyle,
       Color,
       FontFamily,
+      Underline,
       Highlight,
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          rel: 'noopener noreferrer nofollow',
+          target: '_blank',
+        },
+      }),
+      Image.configure({
+        inline: false,
+        allowBase64: true,
+      }),
       TaskList,
       TaskItem.configure({ nested: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Typography,
+      DataSheet,
       Placeholder.configure({ placeholder: 'Start writing...' }),
     ],
     content: page.content,
@@ -364,18 +410,20 @@ function PageEditor({
   });
 
   const tone = fullDocumentMode ? 'doc' : 'app';
-  const shellBackground = fullDocumentMode ? 'var(--doc-surface)' : 'var(--bg-primary)';
   const shellBorder = fullDocumentMode ? 'var(--doc-border)' : 'var(--border-color)';
   const shellText = fullDocumentMode ? 'var(--doc-ink)' : 'var(--text-primary)';
   const shellTextSoft = fullDocumentMode ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
   const shellMuted = fullDocumentMode ? 'var(--doc-ink-soft)' : 'var(--text-muted)';
+  const chromeSurface = fullDocumentMode ? 'var(--doc-toolbar-bg)' : 'var(--glass-bg)';
+  const showTopChrome = !chromeCollapsed && !fullDocumentMode;
+  const showSideChrome = !chromeCollapsed && fullDocumentMode;
   const scrollPadding = fullDocumentMode
     ? chromeCollapsed
-      ? '24px 24px 52px'
-      : '32px 24px 56px'
+      ? '18px 20px 48px'
+      : '18px 20px 56px'
     : chromeCollapsed
-      ? '12px 20px 28px'
-      : '20px 20px 40px';
+      ? '10px 16px 24px'
+      : '12px 16px 32px';
 
   return (
     <div
@@ -388,16 +436,18 @@ function PageEditor({
         background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'transparent',
       }}
     >
-      {!chromeCollapsed && (
+      {showTopChrome && (
         <>
           <div
             style={{
-              padding: '16px 18px 12px',
+              padding: '10px 12px 8px',
               borderBottom: `1px solid ${shellBorder}`,
-              background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'var(--bg-primary)',
+              background: chromeSurface,
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 6,
+              gap: 4,
               flexShrink: 0,
             }}
           >
@@ -424,11 +474,11 @@ function PageEditor({
               <button
                 onClick={onToggleChrome}
                 style={{
-                  height: 24,
+                  height: 26,
                   padding: '0 8px',
-                  borderRadius: 8,
+                  borderRadius: 999,
                   border: `1px solid ${shellBorder}`,
-                  background: shellBackground,
+                  background: 'rgba(255,255,255,0.08)',
                   color: shellTextSoft,
                   fontSize: 10,
                   fontWeight: 700,
@@ -456,13 +506,13 @@ function PageEditor({
               placeholder="Untitled"
               style={{
                 width: '100%',
-                height: 40,
-                borderRadius: 10,
+                height: 34,
+                borderRadius: 12,
                 border: `1px solid ${shellBorder}`,
-                background: shellBackground,
+                background: 'rgba(255,255,255,0.06)',
                 color: shellText,
                 padding: '0 12px',
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: 700,
                 outline: 'none',
               }}
@@ -474,14 +524,14 @@ function PageEditor({
       )}
 
       <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: scrollPadding,
-          minWidth: 0,
-          background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'transparent',
-        }}
-        onClick={() => editor?.commands.focus()}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: scrollPadding,
+            minWidth: 0,
+            background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'transparent',
+          }}
+          onClick={() => editor?.commands.focus()}
       >
         {chromeCollapsed && (
           <div
@@ -491,7 +541,7 @@ function PageEditor({
               justifyContent: 'space-between',
               gap: 12,
               marginBottom: 12,
-              padding: '8px 0 12px',
+              padding: '8px 0 10px',
               borderBottom: `1px solid ${shellBorder}`,
             }}
           >
@@ -521,9 +571,9 @@ function PageEditor({
               style={{
                 height: 28,
                 padding: '0 10px',
-                borderRadius: 8,
+                borderRadius: 999,
                 border: `1px solid ${shellBorder}`,
-                background: shellBackground,
+                background: chromeSurface,
                 color: shellText,
                 fontSize: 11,
                 fontWeight: 700,
@@ -537,32 +587,52 @@ function PageEditor({
         )}
 
         {fullDocumentMode ? (
-          <div style={{ maxWidth: 980, margin: '0 auto' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 16,
-                margin: '0 auto 12px',
-                padding: '0 12px',
-                color: shellMuted,
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-              }}
-            >
-              <span>{page.title || 'Untitled'}</span>
-              <span>Page 1</span>
-            </div>
+          <div
+            style={{
+              maxWidth: 1320,
+              margin: '0 auto',
+              display: 'grid',
+              gridTemplateColumns: showSideChrome ? '260px minmax(0, 1fr)' : 'minmax(0, 1fr)',
+              gap: 20,
+              alignItems: 'start',
+            }}
+          >
+            {showSideChrome && editor && (
+              <DocumentEditorRail
+                editor={editor}
+                page={page}
+                onToggleChrome={onToggleChrome}
+                onTitleChange={onTitleChange}
+              />
+            )}
 
-            <div className="document-sheet">
-              <EditorContent editor={editor} />
-
-              <div className="document-sheet-footer">
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  margin: '0 auto 12px',
+                  padding: '0 12px',
+                  color: shellMuted,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
                 <span>{page.title || 'Untitled'}</span>
                 <span>Page 1</span>
+              </div>
+
+              <div className="document-sheet">
+                <EditorContent editor={editor} />
+
+                <div className="document-sheet-footer">
+                  <span>{page.title || 'Untitled'}</span>
+                  <span>Page 1</span>
+                </div>
               </div>
             </div>
           </div>
@@ -574,148 +644,276 @@ function PageEditor({
   );
 }
 
-function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
-  const color = editor.getAttributes('textStyle').color ?? '#000000';
+function DocumentEditorRail({
+  editor,
+  page,
+  onToggleChrome,
+  onTitleChange,
+}: {
+  editor: Editor;
+  page: DocPage;
+  onToggleChrome: () => void;
+  onTitleChange: (title: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        position: 'sticky',
+        top: 0,
+        display: 'grid',
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          display: 'grid',
+          gap: 8,
+          padding: 12,
+          borderRadius: 24,
+          border: '1px solid var(--doc-border)',
+          background: 'var(--doc-toolbar-bg)',
+          backdropFilter: 'blur(18px)',
+          WebkitBackdropFilter: 'blur(18px)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 2 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--doc-ink-soft)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Document
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--doc-ink-soft)' }}>Editing rail</span>
+          </div>
+          <button
+            onClick={onToggleChrome}
+            style={{
+              height: 28,
+              padding: '0 10px',
+              borderRadius: 999,
+              border: '1px solid var(--doc-border)',
+              background: 'rgba(255,255,255,0.06)',
+              color: 'var(--doc-ink)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Hide
+          </button>
+        </div>
+
+        <input
+          value={page.title}
+          onChange={(event) => onTitleChange(event.target.value)}
+          onBlur={(event) => {
+            if (!event.target.value.trim()) {
+              onTitleChange('Untitled');
+            }
+          }}
+          placeholder="Untitled"
+          style={{
+            width: '100%',
+            height: 38,
+            borderRadius: 14,
+            border: '1px solid var(--doc-border)',
+            background: 'rgba(255,255,255,0.06)',
+            color: 'var(--doc-ink)',
+            padding: '0 12px',
+            fontSize: 14,
+            fontWeight: 700,
+            outline: 'none',
+          }}
+        />
+      </div>
+
+      <FormatBar editor={editor} tone="doc" variant="panel" />
+    </div>
+  );
+}
+
+function FormatBar({
+  editor,
+  tone,
+  variant = 'bar',
+}: {
+  editor: Editor;
+  tone: 'app' | 'doc';
+  variant?: 'bar' | 'panel';
+}) {
+  const color = editor.getAttributes('textStyle').color ?? '#111827';
   const fontFamily = editor.getAttributes('textStyle').fontFamily ?? 'Space Grotesk';
-  const inputSurface = tone === 'doc' ? 'var(--doc-surface)' : 'var(--bg-primary)';
-  const border = tone === 'doc' ? 'var(--doc-border)' : 'var(--border-color)';
+  const linkHref = editor.getAttributes('link').href ?? '';
+  const inputSurface = tone === 'doc' ? 'var(--doc-toolbar-bg)' : 'var(--glass-bg)';
+  const border = tone === 'doc' ? 'var(--doc-border)' : 'var(--glass-border)';
   const text = tone === 'doc' ? 'var(--doc-ink)' : 'var(--text-primary)';
   const textSoft = tone === 'doc' ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
+  const isCodeBlock = editor.isActive('codeBlock');
+  const codeBlockLang = editor.getAttributes('codeBlock').language ?? 'plaintext';
+  const codeBlockTheme = editor.getAttributes('codeBlock').codeTheme ?? 'graphite';
 
   const buttons: Array<{
     key: string;
     title: string;
-    active: () => boolean;
-    run: () => void;
+    active: boolean;
     icon?: string;
     label?: string;
+    run: () => void;
   }> = [
     {
       key: 'bold',
       title: 'Bold',
-      active: () => editor.isActive('bold'),
-      run: () => editor.chain().focus().toggleBold().run(),
+      active: editor.isActive('bold'),
       icon: 'format_bold',
+      run: () => editor.chain().focus().toggleBold().run(),
     },
     {
       key: 'italic',
       title: 'Italic',
-      active: () => editor.isActive('italic'),
-      run: () => editor.chain().focus().toggleItalic().run(),
+      active: editor.isActive('italic'),
       icon: 'format_italic',
+      run: () => editor.chain().focus().toggleItalic().run(),
     },
     {
-      key: 'bold-italic',
-      title: 'Bold + Italic',
-      active: () => editor.isActive('bold') && editor.isActive('italic'),
-      run: () => {
-        const isBoldItalic = editor.isActive('bold') && editor.isActive('italic');
-        if (isBoldItalic) {
-          editor.chain().focus().unsetBold().unsetItalic().run();
-        } else {
-          editor.chain().focus().setBold().setItalic().run();
-        }
-      },
-      label: 'B/I',
+      key: 'underline',
+      title: 'Underline',
+      active: editor.isActive('underline'),
+      icon: 'format_underlined',
+      run: () => editor.chain().focus().toggleUnderline().run(),
     },
     {
       key: 'strike',
       title: 'Strikethrough',
-      active: () => editor.isActive('strike'),
-      run: () => editor.chain().focus().toggleStrike().run(),
+      active: editor.isActive('strike'),
       icon: 'strikethrough_s',
+      run: () => editor.chain().focus().toggleStrike().run(),
     },
     {
       key: 'highlight',
       title: 'Highlight',
-      active: () => editor.isActive('highlight'),
-      run: () => editor.chain().focus().toggleHighlight().run(),
+      active: editor.isActive('highlight'),
       icon: 'format_color_fill',
+      run: () => editor.chain().focus().toggleHighlight().run(),
+    },
+    {
+      key: 'inline-code',
+      title: 'Inline code',
+      active: editor.isActive('code'),
+      icon: 'code',
+      run: () => editor.chain().focus().toggleCode().run(),
+    },
+    {
+      key: 'link',
+      title: linkHref ? 'Edit link' : 'Add link',
+      active: editor.isActive('link'),
+      icon: 'link',
+      run: () => {
+        if (editor.isActive('link')) {
+          editor.chain().focus().unsetLink().run();
+          return;
+        }
+        const nextHref = window.prompt('Paste the link URL');
+        if (!nextHref) return;
+        editor.chain().focus().extendMarkRange('link').setLink({ href: nextHref }).run();
+      },
     },
     {
       key: 'h1',
       title: 'Heading 1',
-      active: () => editor.isActive('heading', { level: 1 }),
-      run: () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+      active: editor.isActive('heading', { level: 1 }),
       label: 'H1',
+      run: () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
     },
     {
       key: 'h2',
       title: 'Heading 2',
-      active: () => editor.isActive('heading', { level: 2 }),
-      run: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      active: editor.isActive('heading', { level: 2 }),
       label: 'H2',
+      run: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
     },
     {
       key: 'h3',
       title: 'Heading 3',
-      active: () => editor.isActive('heading', { level: 3 }),
-      run: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+      active: editor.isActive('heading', { level: 3 }),
       label: 'H3',
+      run: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
     },
     {
       key: 'bullet',
       title: 'Bullet list',
-      active: () => editor.isActive('bulletList'),
-      run: () => editor.chain().focus().toggleBulletList().run(),
+      active: editor.isActive('bulletList'),
       icon: 'format_list_bulleted',
+      run: () => editor.chain().focus().toggleBulletList().run(),
     },
     {
       key: 'ordered',
       title: 'Ordered list',
-      active: () => editor.isActive('orderedList'),
-      run: () => editor.chain().focus().toggleOrderedList().run(),
+      active: editor.isActive('orderedList'),
       icon: 'format_list_numbered',
+      run: () => editor.chain().focus().toggleOrderedList().run(),
     },
     {
       key: 'tasks',
       title: 'Task list',
-      active: () => editor.isActive('taskList'),
-      run: () => editor.chain().focus().toggleTaskList().run(),
+      active: editor.isActive('taskList'),
       icon: 'checklist',
+      run: () => editor.chain().focus().toggleTaskList().run(),
     },
     {
       key: 'quote',
       title: 'Blockquote',
-      active: () => editor.isActive('blockquote'),
-      run: () => editor.chain().focus().toggleBlockquote().run(),
+      active: editor.isActive('blockquote'),
       icon: 'format_quote',
+      run: () => editor.chain().focus().toggleBlockquote().run(),
     },
     {
-      key: 'code',
-      title: 'Inline code',
-      active: () => editor.isActive('code'),
-      run: () => editor.chain().focus().toggleCode().run(),
-      icon: 'code',
-    },
-    {
-      key: 'codeBlock',
+      key: 'code-block',
       title: 'Code block',
-      active: () => editor.isActive('codeBlock'),
-      run: () => editor.chain().focus().toggleCodeBlock().run(),
+      active: isCodeBlock,
       icon: 'data_object',
-    },
-    {
-      key: 'rule',
-      title: 'Divider',
-      active: () => false,
-      run: () => editor.chain().focus().setHorizontalRule().run(),
-      icon: 'horizontal_rule',
+      run: () => editor.chain().focus().toggleCodeBlock().run(),
     },
   ];
 
-  const isCodeBlock = editor.isActive('codeBlock');
-  const codeBlockLang = editor.getAttributes('codeBlock').language ?? 'plaintext';
+  const insertImage = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (loadEvent) => {
+        const src = loadEvent.target?.result as string;
+        editor.chain().focus().setImage({ src, alt: file.name }).run();
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  const insertDataSheet = () => {
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: 'dataSheet',
+        attrs: { model: serializeDataSheet(createDefaultDataSheet()) },
+      })
+      .run();
+  };
 
   return (
     <div
       style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: tone === 'doc' ? 3 : 6,
-        padding: tone === 'doc' ? '6px 10px' : '10px 12px',
-        borderBottom: `1px solid ${border}`,
-        background: tone === 'doc' ? 'var(--doc-canvas-bg)' : 'var(--bg-secondary)',
+        gap: 4,
+        padding: variant === 'panel' ? '12px' : tone === 'doc' ? '8px 10px' : '8px 12px',
+        borderBottom: variant === 'panel' ? 'none' : `1px solid ${border}`,
+        border: variant === 'panel' ? `1px solid ${border}` : 'none',
+        borderRadius: variant === 'panel' ? 24 : 0,
+        background: inputSurface,
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
         flexShrink: 0,
         alignItems: 'center',
       }}
@@ -724,34 +922,16 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
         <FormatButton
           key={button.key}
           title={button.title}
-          active={button.active()}
+          active={button.active}
           onMouseDown={(event) => {
             event.preventDefault();
             button.run();
           }}
           tone={tone}
         >
-          {button.icon ? <Icon name={button.icon} size={16} /> : button.label}
+          {button.icon ? <Icon name={button.icon} size={15} /> : button.label}
         </FormatButton>
       ))}
-
-      {isCodeBlock && (
-        <>
-          <ToolbarDivider tone={tone} />
-          <select
-            value={codeBlockLang}
-            onChange={(event) =>
-              editor.chain().focus().updateAttributes('codeBlock', { language: event.target.value }).run()
-            }
-            title="Code language"
-            style={getControlStyle(tone)}
-          >
-            {CODE_LANGUAGES.map((lang) => (
-              <option key={lang.value} value={lang.value}>{lang.label}</option>
-            ))}
-          </select>
-        </>
-      )}
 
       <ToolbarDivider tone={tone} />
 
@@ -782,20 +962,20 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
           gap: 4,
           padding: '4px 6px',
           border: `1px solid ${border}`,
-          borderRadius: 8,
-          background: inputSurface,
+          borderRadius: 999,
+          background: tone === 'doc' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
           color: textSoft,
         }}
       >
-        <Icon name="format_color_text" size={16} />
+        <Icon name="format_color_text" size={15} />
         <input
           type="color"
           value={color}
           onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
           title="Text color"
           style={{
-            width: 24,
-            height: 24,
+            width: 22,
+            height: 22,
             border: 'none',
             background: 'transparent',
             padding: 0,
@@ -814,8 +994,8 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
               editor.chain().focus().setColor(preset).run();
             }}
             style={{
-              width: 18,
-              height: 18,
+              width: 16,
+              height: 16,
               borderRadius: '50%',
               border: color === preset ? `2px solid ${text}` : `1px solid ${border}`,
               background: preset,
@@ -827,52 +1007,95 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
 
       <ToolbarDivider tone={tone} />
 
-      <div style={{ display: 'flex', gap: 4 }}>
-        {[
-          { align: 'left' as const, icon: 'format_align_left', title: 'Align left' },
-          { align: 'center' as const, icon: 'format_align_center', title: 'Align center' },
-          { align: 'right' as const, icon: 'format_align_right', title: 'Align right' },
-        ].map((option) => (
-          <FormatButton
-            key={option.align}
-            title={option.title}
-            active={editor.isActive({ textAlign: option.align })}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              editor.chain().focus().setTextAlign(option.align).run();
-            }}
-            tone={tone}
+      {[
+        { align: 'left' as const, icon: 'format_align_left', title: 'Align left' },
+        { align: 'center' as const, icon: 'format_align_center', title: 'Align center' },
+        { align: 'right' as const, icon: 'format_align_right', title: 'Align right' },
+      ].map((option) => (
+        <FormatButton
+          key={option.align}
+          title={option.title}
+          active={editor.isActive({ textAlign: option.align })}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            editor.chain().focus().setTextAlign(option.align).run();
+          }}
+          tone={tone}
+        >
+          <Icon name={option.icon} size={15} />
+        </FormatButton>
+      ))}
+
+      {isCodeBlock && (
+        <>
+          <ToolbarDivider tone={tone} />
+          <select
+            value={codeBlockLang}
+            onChange={(event) =>
+              editor.chain().focus().updateAttributes('codeBlock', { language: event.target.value }).run()
+            }
+            title="Code language"
+            style={getControlStyle(tone)}
           >
-            <Icon name={option.icon} size={16} />
-          </FormatButton>
-        ))}
-      </div>
+            {CODE_LANGUAGES.map((lang) => (
+              <option key={lang.value} value={lang.value}>
+                {lang.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={codeBlockTheme}
+            onChange={(event) =>
+              editor.chain().focus().updateAttributes('codeBlock', { codeTheme: event.target.value }).run()
+            }
+            title="Code theme"
+            style={getControlStyle(tone)}
+          >
+            {CODE_THEME_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
 
       <ToolbarDivider tone={tone} />
 
       <FormatButton
-        title="Insert Image"
+        title="Insert image"
         active={false}
         tone={tone}
         onMouseDown={(event) => {
           event.preventDefault();
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = 'image/*';
-          input.onchange = () => {
-            const file = input.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const dataUrl = e.target?.result as string;
-              editor.commands.insertContent(`<img src="${dataUrl}" />`);
-            };
-            reader.readAsDataURL(file);
-          };
-          input.click();
+          insertImage();
         }}
       >
-        <Icon name="image" size={16} />
+        <Icon name="image" size={15} />
+      </FormatButton>
+
+      <FormatButton
+        title="Insert data sheet"
+        active={false}
+        tone={tone}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          insertDataSheet();
+        }}
+      >
+        <Icon name="table_chart" size={15} />
+      </FormatButton>
+
+      <FormatButton
+        title="Divider"
+        active={false}
+        tone={tone}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          editor.chain().focus().setHorizontalRule().run();
+        }}
+      >
+        <Icon name="horizontal_rule" size={15} />
       </FormatButton>
     </div>
   );
@@ -895,7 +1118,7 @@ function FormatButton({
   const activeColor = tone === 'doc' ? 'var(--doc-surface)' : 'var(--primary-contrast)';
   const idleColor = tone === 'doc' ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
 
-  const btnSize = tone === 'doc' ? 26 : 32;
+  const btnSize = tone === 'doc' ? 24 : 28;
 
   return (
     <button
@@ -904,13 +1127,13 @@ function FormatButton({
       style={{
         minWidth: btnSize,
         height: btnSize,
-        padding: tone === 'doc' ? '0 6px' : '0 10px',
-        borderRadius: tone === 'doc' ? 6 : 8,
-        border: '1px solid transparent',
+        padding: tone === 'doc' ? '0 6px' : '0 8px',
+        borderRadius: 999,
+        border: active ? '1px solid transparent' : '1px solid transparent',
         background: active ? activeBackground : 'transparent',
         color: active ? activeColor : idleColor,
         cursor: 'pointer',
-        transition: 'all 0.1s',
+        transition: 'all 0.12s ease',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -947,9 +1170,9 @@ function SmallBtn({
       style={{
         width: 24,
         height: 24,
-        borderRadius: 6,
+        borderRadius: 999,
         border: 'none',
-        background: hover ? 'var(--bg-tertiary)' : 'transparent',
+        background: hover ? 'rgba(255,255,255,0.08)' : 'transparent',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
@@ -992,13 +1215,13 @@ function countPages(pages: DocPage[]): number {
 
 function getControlStyle(tone: 'app' | 'doc'): CSSProperties {
   return {
-    height: 32,
-    borderRadius: 8,
+    height: 30,
+    borderRadius: 999,
     border: `1px solid ${tone === 'doc' ? 'var(--doc-border)' : 'var(--border-color)'}`,
-    background: tone === 'doc' ? 'var(--doc-surface)' : 'var(--bg-primary)',
+    background: tone === 'doc' ? 'rgba(255,255,255,0.06)' : 'var(--glass-bg)',
     color: tone === 'doc' ? 'var(--doc-ink)' : 'var(--text-primary)',
     padding: '0 10px',
-    fontSize: 12,
+    fontSize: 11,
     cursor: 'pointer',
   };
 }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { buildArrowPathDefinition, getArrowBounds, getArrowRenderablePoints } from '../lib/arrows';
+import { createDefaultDataSheet, serializeDataSheet } from '../lib/dataSheet';
 import { useStore } from '../store/useStore';
 import { parseElementsFromClipboard } from '../lib/whiteboardData';
 import type { Point, WhiteboardElement } from '../types';
@@ -12,12 +14,26 @@ import { ShapeElementComponent } from './elements/ShapeElement';
 import { StickyElementComponent } from './elements/StickyElement';
 import { TextElementComponent } from './elements/TextElement';
 import { ChartElementComponent } from './elements/ChartElement';
+import { TableElementComponent } from './elements/TableElement';
 
 interface AlignmentGuide {
   orientation: 'vertical' | 'horizontal';
   position: number;
   start: number;
   end: number;
+}
+
+interface ArrowDraft {
+  start: Point;
+  end: Point;
+  startElementId?: string;
+  endElementId?: string;
+}
+
+interface PanelDraft {
+  type: 'code' | 'table' | 'chart';
+  start: Point;
+  current: Point;
 }
 
 // ── Helper: snap arrow point to nearest element edge anchor ──────────────────
@@ -89,8 +105,10 @@ export function Whiteboard() {
     start: Point;
     current: Point;
   } | null>(null);
-  const [drawingArrow, setDrawingArrow] = useState<Point[] | null>(null);
+  const [drawingArrow, setDrawingArrow] = useState<ArrowDraft | null>(null);
   const [penPoints, setPenPoints] = useState<Point[] | null>(null);
+  const [panelDraft, setPanelDraft] = useState<PanelDraft | null>(null);
+  const [isErasing, setIsErasing] = useState(false);
   const [selectionBox, setSelectionBox] = useState<{
     start: Point;
     current: Point;
@@ -100,6 +118,8 @@ export function Whiteboard() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; elementId: string } | null>(null);
   const panStart = useRef<{ mx: number; my: number; vx: number; vy: number } | null>(null);
   const lastPointerCanvasRef = useRef<Point | null>(null);
+  const erasedIdsRef = useRef<Set<string>>(new Set());
+  const pointerGlowRef = useRef<HTMLDivElement>(null);
 
   const toCanvas = useCallback(
     (screenX: number, screenY: number): Point => {
@@ -121,6 +141,43 @@ export function Whiteboard() {
   const getPasteAnchor = useCallback((): Point => {
     return lastPointerCanvasRef.current ?? getViewportCenter();
   }, [getViewportCenter]);
+
+  const eraseAtPoint = useCallback((point: Point) => {
+    const target = findTopmostElementAtPoint(elements, point);
+    if (!target || erasedIdsRef.current.has(target.id)) {
+      return;
+    }
+
+    erasedIdsRef.current.add(target.id);
+    useStore.setState((state) => ({
+      elements: state.elements.filter((element) => element.id !== target.id),
+      selectedIds: state.selectedIds.filter((selectedId) => selectedId !== target.id),
+    }));
+  }, [elements]);
+
+  const paintPointerGlow = useCallback((clientX: number, clientY: number, visible = true) => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const glow = pointerGlowRef.current;
+    if (!rect || !glow) return;
+
+    glow.style.opacity = visible ? '1' : '0';
+    glow.style.mixBlendMode =
+      getComputedStyle(document.documentElement).getPropertyValue('--pointer-glow-blend').trim() || 'multiply';
+    glow.style.background = `radial-gradient(220px circle at ${clientX - rect.left}px ${clientY - rect.top}px, var(--pointer-glow-center) 0%, var(--pointer-glow-mid) 34%, transparent 72%)`;
+  }, []);
+
+  const finishSingleUseTool = useCallback((selectedId?: string) => {
+    if (activeTool === 'pen' || activeTool === 'select' || activeTool === 'hand') {
+      return;
+    }
+
+    setActiveTool('select');
+    if (selectedId) {
+      requestAnimationFrame(() => {
+        useStore.getState().setSelectedIds([selectedId]);
+      });
+    }
+  }, [activeTool, setActiveTool]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -164,8 +221,11 @@ export function Whiteboard() {
       if (event.key === 'Escape') {
         clearSelection();
         setActiveTool('select');
-        // Also cancel drawing arrow
         setDrawingArrow(null);
+        setDrawingShape(null);
+        setPanelDraft(null);
+        setPenPoints(null);
+        setIsErasing(false);
       }
       if (hasPrimaryModifier && (event.key === 'a' || event.key === 'A')) {
         event.preventDefault();
@@ -245,7 +305,8 @@ export function Whiteboard() {
       const isEditing = isEditableTarget(target);
       const insideWhiteboard = isInsideSurface(target, 'whiteboard');
       const insideDocs = isInsideSurface(target, 'document');
-      if (isEditing || insideDocs || (!insideWhiteboard && activeSurface !== 'whiteboard')) return;
+      const insideCodeBlock = target instanceof HTMLElement && Boolean(target.closest('[data-code-block="true"]'));
+      if (isEditing || insideDocs || insideCodeBlock || (!insideWhiteboard && activeSurface !== 'whiteboard')) return;
 
       const clipboardData = event.clipboardData;
       if (!clipboardData) return;
@@ -498,25 +559,17 @@ export function Whiteboard() {
           },
         });
         selectElement(id);
+        finishSingleUseTool(id);
         return;
       }
 
       if (activeTool === 'code') {
-        const id = addElement({
+        setPanelDraft({
           type: 'code',
-          x: point.x - 200,
-          y: point.y - 170,
-          width: 400,
-          height: 340,
-          properties: {
-            title: 'React Block',
-            runtime: 'react',
-            html: '<div id="root"></div>',
-            css: 'body{background:#fff;color:#000;font-family:Inter,system-ui,sans-serif;}\n.card{display:grid;gap:16px;padding:24px;max-width:320px;margin:24px auto;border:1px solid #000;border-radius:24px;box-shadow:0 18px 40px rgba(0,0,0,0.08);}\nbutton{height:42px;border-radius:999px;border:1px solid #000;background:#000;color:#fff;font-weight:700;cursor:pointer;}\np{margin:0;color:#444;}',
-            js: "import React, { useState } from 'react';\n\nexport default function App() {\n  const [count, setCount] = useState(0);\n\n  return (\n    <div className=\"card\">\n      <div>\n        <h2>React JSX ready</h2>\n        <p>This sandbox now runs AI-generated JSX and TSX snippets.</p>\n      </div>\n      <button onClick={() => setCount((value) => value + 1)}>\n        Clicked {count} times\n      </button>\n    </div>\n  );\n}\n",
-          },
+          start: point,
+          current: point,
         });
-        selectElement(id);
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         return;
       }
 
@@ -537,6 +590,7 @@ export function Whiteboard() {
           },
         });
         selectElement(id);
+        finishSingleUseTool(id);
         return;
       }
 
@@ -560,6 +614,7 @@ export function Whiteboard() {
               properties: { src, alt: file.name, objectFit: 'contain' },
             });
             selectElement(id);
+            finishSingleUseTool(id);
           };
           reader.readAsDataURL(file);
         };
@@ -567,40 +622,35 @@ export function Whiteboard() {
         return;
       }
 
-      if (activeTool === 'chart') {
-        const id = addElement({
-          type: 'chart',
-          x: point.x - 200,
-          y: point.y - 150,
-          width: 400,
-          height: 300,
-          properties: {
-            chartType: toolDefaults.chart.chartType,
-            labels: [...toolDefaults.chart.labels],
-            datasets: toolDefaults.chart.datasets.map((ds) => ({ ...ds })),
-          },
+      if (activeTool === 'table' || activeTool === 'chart') {
+        setPanelDraft({
+          type: activeTool,
+          start: point,
+          current: point,
         });
-        selectElement(id);
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+        return;
+      }
+
+      if (activeTool === 'eraser') {
+        historyPush();
+        erasedIdsRef.current.clear();
+        setIsErasing(true);
+        eraseAtPoint(point);
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         return;
       }
 
       if (activeTool === 'arrow') {
-        // Multi-point arrow: first click initializes, subsequent clicks add points
-        const currentDrawingArrow = useStore.getState();
-        void currentDrawingArrow; // accessed via state closure below
-        setDrawingArrow((prev) => {
-          if (prev === null) {
-            // First click: start new arrow (no pointer capture for click-based drawing)
-            const snapTarget = getSnapTarget(point, elements);
-            const snappedPoint = snapTarget ? snapTarget.snappedPoint : point;
-            return [snappedPoint];
-          } else {
-            // Subsequent clicks: append point
-            const snapTarget = getSnapTarget(point, elements);
-            const snappedPoint = snapTarget ? snapTarget.snappedPoint : point;
-            return [...prev, snappedPoint];
-          }
+        const snapTarget = getSnapTarget(point, elements);
+        const startPoint = snapTarget?.snappedPoint ?? point;
+        setDrawingArrow({
+          start: startPoint,
+          end: startPoint,
+          startElementId: snapTarget?.elementId,
+          endElementId: snapTarget?.elementId,
         });
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         return;
       }
 
@@ -609,11 +659,12 @@ export function Whiteboard() {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       }
     },
-    [activeTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, toolDefaults, historyPush, updateElements, selectedIds, elements, viewState]
+    [activeTool, eraseAtPoint, finishSingleUseTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, toolDefaults, historyPush, updateElements, selectedIds, elements, viewState]
   );
 
   const onCanvasPointerMove = useCallback(
     (event: React.PointerEvent) => {
+      paintPointerGlow(event.clientX, event.clientY);
       const point = toCanvas(event.clientX, event.clientY);
       lastPointerCanvasRef.current = point;
 
@@ -625,8 +676,18 @@ export function Whiteboard() {
         return;
       }
 
+      if (isErasing) {
+        eraseAtPoint(point);
+        return;
+      }
+
       if (selectionBox) {
         setSelectionBox((previous) => (previous ? { ...previous, current: point } : previous));
+        return;
+      }
+
+      if (panelDraft) {
+        setPanelDraft((previous) => (previous ? { ...previous, current: point } : previous));
         return;
       }
 
@@ -635,22 +696,17 @@ export function Whiteboard() {
         return;
       }
 
-      if (drawingArrow && drawingArrow.length >= 1) {
-        // Update the last point to follow cursor (preview next segment)
-        setDrawingArrow((prev) => {
-          if (!prev) return prev;
-          // Replace the last point with current cursor position
-          // The points are: [p0, p1, ..., p(n-1), cursor]
-          // If we're drawing (has at least 1 confirmed point), show cursor as last
-          const snapTarget = getSnapTarget(point, elements);
-          const snappedPoint = snapTarget ? snapTarget.snappedPoint : point;
-          // Keep confirmed points + update last preview point
-          if (prev.length === 1) {
-            return [prev[0], snappedPoint];
-          }
-          // Replace the last unconfirmed preview point
-          return [...prev.slice(0, -1), snappedPoint];
-        });
+      if (drawingArrow) {
+        const snapTarget = getSnapTarget(point, elements);
+        setDrawingArrow((previous) =>
+          previous
+            ? {
+                ...previous,
+                end: snapTarget?.snappedPoint ?? point,
+                endElementId: snapTarget?.elementId,
+              }
+            : previous
+        );
         return;
       }
 
@@ -658,7 +714,7 @@ export function Whiteboard() {
         setPenPoints((previous) => (previous ? [...previous, point] : []));
       }
     },
-    [drawingArrow, drawingShape, penPoints, selectionBox, toCanvas, setViewState, elements]
+    [drawingArrow, drawingShape, eraseAtPoint, isErasing, paintPointerGlow, panelDraft, penPoints, selectionBox, toCanvas, setViewState, elements]
   );
 
   const onCanvasPointerUp = useCallback(
@@ -666,6 +722,82 @@ export function Whiteboard() {
       if (panStart.current) {
         setIsPanning(false);
         panStart.current = null;
+        return;
+      }
+
+      if (isErasing) {
+        setIsErasing(false);
+        erasedIdsRef.current.clear();
+        finishSingleUseTool();
+        return;
+      }
+
+      if (panelDraft) {
+        const left = Math.min(panelDraft.start.x, panelDraft.current.x);
+        const top = Math.min(panelDraft.start.y, panelDraft.current.y);
+        const rawWidth = Math.abs(panelDraft.current.x - panelDraft.start.x);
+        const rawHeight = Math.abs(panelDraft.current.y - panelDraft.start.y);
+
+        const defaults = panelDraft.type === 'code'
+          ? { width: 400, height: 340 }
+          : panelDraft.type === 'table'
+            ? { width: 520, height: 360 }
+            : { width: 420, height: 320 };
+
+        const width = rawWidth < 8 ? defaults.width : rawWidth;
+        const height = rawHeight < 8 ? defaults.height : rawHeight;
+        const x = rawWidth < 8 ? panelDraft.start.x - width / 2 : left;
+        const y = rawHeight < 8 ? panelDraft.start.y - height / 2 : top;
+
+        const id = addElement(
+          panelDraft.type === 'code'
+            ? {
+                type: 'code',
+                x,
+                y,
+                width,
+                height,
+                properties: {
+                  title: 'React Block',
+                  runtime: 'react',
+                  theme: 'vscode-dark',
+                  html: '<div id="root"></div>',
+                  css: 'body{background:#fff;color:#000;font-family:Inter,system-ui,sans-serif;}\n.card{display:grid;gap:16px;padding:24px;max-width:320px;margin:24px auto;border:1px solid #000;border-radius:24px;box-shadow:0 18px 40px rgba(0,0,0,0.08);}\nbutton{height:42px;border-radius:999px;border:1px solid #000;background:#000;color:#fff;font-weight:700;cursor:pointer;}\np{margin:0;color:#444;}',
+                  js: "import React, { useState } from 'react';\n\nexport default function App() {\n  const [count, setCount] = useState(0);\n\n  return (\n    <div className=\"card\">\n      <div>\n        <h2>React JSX ready</h2>\n        <p>This sandbox now runs AI-generated JSX and TSX snippets.</p>\n      </div>\n      <button onClick={() => setCount((value) => value + 1)}>\n        Clicked {count} times\n      </button>\n    </div>\n  );\n}\n",
+                },
+              }
+            : panelDraft.type === 'table'
+              ? {
+                  type: 'table',
+                  x,
+                  y,
+                  width,
+                  height,
+                  properties: {
+                    model: serializeDataSheet(createDefaultDataSheet()),
+                  },
+                }
+              : {
+                  type: 'chart',
+                  x,
+                  y,
+                  width,
+                  height,
+                  properties: {
+                    chartType: 'bar',
+                    title: 'Chart',
+                    labels: [],
+                    datasets: [],
+                    sourceTableId: elements.find((element) => element.type === 'table')?.id,
+                    labelColumnId: undefined,
+                    valueColumnIds: [],
+                    pieMode: 'row-total',
+                  },
+                }
+        );
+        setPanelDraft(null);
+        selectElement(id);
+        finishSingleUseTool(id);
         return;
       }
 
@@ -699,20 +831,51 @@ export function Whiteboard() {
         });
         setDrawingShape(null);
         selectElement(id);
+        finishSingleUseTool(id);
         return;
       }
 
-      // Arrow is now click-based (not drag-based), handled in onCanvasDoubleClick
-      // Just handle pen completion
+      if (drawingArrow) {
+        const distance = Math.hypot(drawingArrow.end.x - drawingArrow.start.x, drawingArrow.end.y - drawingArrow.start.y);
+        if (distance > 6) {
+          const id = addElement({
+            type: 'arrow',
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            properties: {
+              points: [drawingArrow.start, drawingArrow.end],
+              color: toolDefaults.arrow.color,
+              strokeWidth: toolDefaults.arrow.strokeWidth,
+              startArrowHead: toolDefaults.arrow.startArrowHead,
+              endArrowHead: toolDefaults.arrow.endArrowHead,
+              lineStyle: toolDefaults.arrow.lineStyle,
+              curveOffset: toolDefaults.arrow.curveOffset,
+              startElementId: drawingArrow.startElementId,
+              endElementId: drawingArrow.endElementId,
+            },
+          });
+          selectElement(id);
+          finishSingleUseTool(id);
+        }
+        setDrawingArrow(null);
+        return;
+      }
+
       if (penPoints && penPoints.length > 2) {
+        const penBounds = getPointBounds(penPoints);
         addElement({
           type: 'pen',
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
+          x: penBounds.left,
+          y: penBounds.top,
+          width: Math.max(1, penBounds.right - penBounds.left),
+          height: Math.max(1, penBounds.bottom - penBounds.top),
           properties: {
-            points: penPoints,
+            points: penPoints.map((point) => ({
+              x: point.x - penBounds.left,
+              y: point.y - penBounds.top,
+            })),
             color: toolDefaults.pen.color,
             strokeWidth: toolDefaults.pen.strokeWidth,
           },
@@ -734,51 +897,16 @@ export function Whiteboard() {
 
       setPenPoints(null);
       setDrawingShape(null);
+      setDrawingArrow(null);
     },
-    [drawingShape, elements, penPoints, selectedIds, selectionBox, addElement, selectElement, setSelectedIds, toolDefaults]
+    [addElement, drawingArrow, drawingShape, elements, finishSingleUseTool, isErasing, panelDraft, penPoints, selectElement, selectedIds, selectionBox, setSelectedIds, toolDefaults]
   );
 
-  // Double-click to finalize arrow drawing
   const onCanvasDoubleClick = useCallback(
-    (event: React.MouseEvent) => {
-      if (activeTool !== 'arrow') return;
-      if (!drawingArrow) return;
-
-      // We need at least 2 confirmed points. The last point is the cursor preview.
-      // On double-click, the previous single-click already added a point, so
-      // drawingArrow has [start, ...intermediates, cursor].
-      // Use all points except the last cursor preview as the finalized path.
-      const confirmedPoints = drawingArrow.length >= 2 ? drawingArrow.slice(0, -1) : drawingArrow;
-
-      if (confirmedPoints.length < 2) {
-        setDrawingArrow(null);
-        return;
-      }
-
-      // Determine snap connections for first and last points
-      const firstPoint = confirmedPoints[0];
-      const lastPoint = confirmedPoints[confirmedPoints.length - 1];
-      const startSnap = getSnapTarget(firstPoint, elements);
-      const endSnap = getSnapTarget(lastPoint, elements);
-
-      addElement({
-        type: 'arrow',
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        properties: {
-          points: confirmedPoints,
-          color: toolDefaults.arrow.color,
-          strokeWidth: toolDefaults.arrow.strokeWidth,
-          startElementId: startSnap?.elementId,
-          endElementId: endSnap?.elementId,
-        },
-      });
-      setDrawingArrow(null);
-      void event;
+    (_event: React.MouseEvent) => {
+      // The arrow tool is drag-based now. Double-click is intentionally ignored.
     },
-    [activeTool, drawingArrow, elements, addElement, toolDefaults]
+    []
   );
 
   const onElementPointerDown = useCallback(
@@ -789,7 +917,26 @@ export function Whiteboard() {
       lastPointerCanvasRef.current = toCanvas(event.clientX, event.clientY);
 
       if (activeTool === 'eraser') {
-        useStore.getState().deleteElement(element.id);
+        historyPush();
+        erasedIdsRef.current.clear();
+        setIsErasing(true);
+        eraseAtPoint(lastPointerCanvasRef.current ?? { x: element.x + element.width / 2, y: element.y + element.height / 2 });
+        wrapperRef.current?.setPointerCapture(event.pointerId);
+        return;
+      }
+
+      if (activeTool === 'arrow') {
+        const startPoint = getAnchorForElement(
+          element,
+          lastPointerCanvasRef.current ?? { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+        );
+        setDrawingArrow({
+          start: startPoint,
+          end: startPoint,
+          startElementId: element.id,
+          endElementId: element.id,
+        });
+        wrapperRef.current?.setPointerCapture(event.pointerId);
         return;
       }
 
@@ -881,7 +1028,7 @@ export function Whiteboard() {
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     },
-    [activeTool, historyPush, selectElement, setSelectedIds, toCanvas, updateElements]
+    [activeTool, eraseAtPoint, historyPush, selectElement, setSelectedIds, toCanvas, updateElements]
   );
 
   const onElementContextMenu = useCallback(
@@ -940,7 +1087,7 @@ export function Whiteboard() {
           flex: 1,
           position: 'relative',
           overflow: 'hidden',
-          background: 'var(--canvas-bg)',
+          background: `radial-gradient(circle at 12% 10%, var(--app-gradient-1), transparent 26%), radial-gradient(circle at 84% 18%, var(--app-gradient-2), transparent 24%), var(--canvas-bg)`,
           cursor: getCursor(),
           minHeight: 0,
           outline: 'none',
@@ -951,8 +1098,20 @@ export function Whiteboard() {
         onPointerMove={onCanvasPointerMove}
         onPointerUp={onCanvasPointerUp}
         onDoubleClick={onCanvasDoubleClick}
+        onPointerLeave={() => paintPointerGlow(0, 0, false)}
         onContextMenu={(event) => event.preventDefault()}
       >
+        <div
+          ref={pointerGlowRef}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            opacity: 0,
+            transition: 'opacity 0.16s ease',
+            filter: 'blur(10px)',
+          }}
+        />
         <div
           style={{
             position: 'absolute',
@@ -1008,7 +1167,7 @@ export function Whiteboard() {
           {penPoints && penPoints.length > 1 && (
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
               <path
-                d={penPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}
+                d={buildSmoothPath(penPoints)}
                 fill="none"
                 stroke={toolDefaults.pen.color}
                 strokeWidth={toolDefaults.pen.strokeWidth}
@@ -1018,7 +1177,7 @@ export function Whiteboard() {
             </svg>
           )}
 
-          {drawingArrow && drawingArrow.length >= 2 && (
+          {drawingArrow && (
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
               <defs>
                 <marker id="arrow-preview" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
@@ -1026,17 +1185,18 @@ export function Whiteboard() {
                 </marker>
               </defs>
               <path
-                d={drawingArrow.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ')}
+                d={buildArrowPathDefinition({
+                  points: [drawingArrow.start, drawingArrow.end],
+                  lineStyle: toolDefaults.arrow.lineStyle,
+                  curveOffset: toolDefaults.arrow.curveOffset,
+                })}
                 fill="none"
                 stroke="var(--text-primary)"
                 strokeWidth={2}
                 strokeDasharray="6 4"
-                markerEnd="url(#arrow-preview)"
+                markerEnd={toolDefaults.arrow.endArrowHead === 'none' ? undefined : 'url(#arrow-preview)'}
               />
-              {/* Show click dots for confirmed intermediate points */}
-              {drawingArrow.slice(0, -1).map((pt, idx) => (
-                <circle key={idx} cx={pt.x} cy={pt.y} r={3} fill="var(--primary)" />
-              ))}
+              <circle cx={drawingArrow.start.x} cy={drawingArrow.start.y} r={3} fill="var(--primary)" />
             </svg>
           )}
 
@@ -1059,6 +1219,23 @@ export function Whiteboard() {
                 transform: drawingShape.shapeType === 'diamond' ? 'rotate(45deg)' : undefined,
                 transformOrigin: 'center center',
                 opacity: 0.65,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
+          {panelDraft && (
+            <div
+              style={{
+                position: 'absolute',
+                left: Math.min(panelDraft.start.x, panelDraft.current.x),
+                top: Math.min(panelDraft.start.y, panelDraft.current.y),
+                width: Math.max(4, Math.abs(panelDraft.current.x - panelDraft.start.x)),
+                height: Math.max(4, Math.abs(panelDraft.current.y - panelDraft.start.y)),
+                border: '1px solid color-mix(in srgb, var(--primary) 72%, transparent)',
+                background: 'color-mix(in srgb, var(--glass-bg) 78%, transparent)',
+                borderRadius: 22,
+                boxShadow: 'var(--shadow-md)',
                 pointerEvents: 'none',
               }}
             />
@@ -1123,6 +1300,7 @@ export function Whiteboard() {
             if (element.type === 'code') return wrapped(<CodeBlockElement element={element} {...sharedProps} />);
             if (element.type === 'image') return wrapped(<ImageElementComponent element={element} {...sharedProps} />);
             if (element.type === 'chart') return wrapped(<ChartElementComponent element={element} {...sharedProps} />);
+            if (element.type === 'table') return wrapped(<TableElementComponent element={element} {...sharedProps} />);
             if (element.type === 'text') {
               return wrapped(
                 <TextElementComponent
@@ -1139,6 +1317,7 @@ export function Whiteboard() {
                   key={element.id}
                   element={element}
                   selected={isSelected}
+                  zoom={viewState.zoom}
                   onPointerDown={(event) => onElementPointerDown(event, element)}
                 />
               );
@@ -1167,6 +1346,13 @@ export function Whiteboard() {
               textAlign: 'center',
               color: 'var(--text-muted)',
               pointerEvents: 'none',
+              padding: '22px 26px',
+              borderRadius: 24,
+              background: 'var(--glass-bg)',
+              backdropFilter: 'var(--glass-blur)',
+              WebkitBackdropFilter: 'var(--glass-blur)',
+              border: '1px solid var(--glass-border)',
+              boxShadow: 'var(--shadow-md)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, opacity: 0.45 }}>
@@ -1191,21 +1377,26 @@ export function Whiteboard() {
         <div
           style={{
             position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 28,
-            background: 'var(--bg-primary)',
-            borderTop: '1px solid var(--border-color)',
+            bottom: 14,
+            left: 14,
+            maxWidth: 'calc(100% - 28px)',
+            minHeight: 36,
+            background: 'var(--glass-bg)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: 999,
+            backdropFilter: 'var(--glass-blur)',
+            WebkitBackdropFilter: 'var(--glass-blur)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 12px',
+            gap: 18,
+            padding: '8px 12px',
             fontSize: 11,
             color: 'var(--text-muted)',
+            boxShadow: 'var(--shadow-md)',
+            flexWrap: 'wrap',
           }}
         >
-          <span style={{ display: 'flex', gap: 14 }}>
+          <span style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <span>
               {elements.length} element{elements.length !== 1 ? 's' : ''}
             </span>
@@ -1215,7 +1406,7 @@ export function Whiteboard() {
               </span>
             )}
           </span>
-          <span style={{ display: 'flex', gap: 12 }}>
+          <span style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <span>Ctrl+Scroll zoom | Shift+Scroll horizontal | Scroll pan</span>
             <span
               style={{ fontVariantNumeric: 'tabular-nums', cursor: 'pointer', color: 'var(--text-secondary)' }}
@@ -1428,16 +1619,14 @@ function getElementIdsInSelectionBox(
 
 function getElementBounds(element: WhiteboardElement) {
   if (element.type === 'arrow' || element.type === 'pen') {
-    const points = element.properties.points;
-    const allX = points.map((point) => point.x + element.x);
-    const allY = points.map((point) => point.y + element.y);
-
-    return {
-      left: Math.min(...allX),
-      top: Math.min(...allY),
-      right: Math.max(...allX),
-      bottom: Math.max(...allY),
-    };
+    const strokePadding = Math.max(8, (element.properties.strokeWidth ?? 2) + 6);
+    const translatedPoints = element.properties.points.map((point) => ({
+      x: point.x + element.x,
+      y: point.y + element.y,
+    }));
+    return element.type === 'arrow'
+      ? getArrowBounds({ points: translatedPoints, lineStyle: element.properties.lineStyle }, strokePadding)
+      : getPointBounds(translatedPoints, strokePadding);
   }
 
   return {
@@ -1552,6 +1741,108 @@ function getAlignmentResult(
   };
 }
 
+function buildSmoothPath(points: Point[]) {
+  if (points.length < 2) return '';
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  let path = `M ${points[0].x} ${points[0].y}`;
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const current = points[index];
+    const next = points[index + 1];
+    const midpoint = {
+      x: (current.x + next.x) / 2,
+      y: (current.y + next.y) / 2,
+    };
+
+    path += ` Q ${current.x} ${current.y} ${midpoint.x} ${midpoint.y}`;
+  }
+
+  const secondLast = points[points.length - 2];
+  const last = points[points.length - 1];
+  path += ` Q ${secondLast.x} ${secondLast.y} ${last.x} ${last.y}`;
+
+  return path;
+}
+
+function getPointBounds(points: Point[], padding = 0) {
+  const allX = points.map((point) => point.x);
+  const allY = points.map((point) => point.y);
+
+  return {
+    left: Math.min(...allX) - padding,
+    top: Math.min(...allY) - padding,
+    right: Math.max(...allX) + padding,
+    bottom: Math.max(...allY) + padding,
+  };
+}
+
+function findTopmostElementAtPoint(elements: WhiteboardElement[], point: Point) {
+  return [...elements]
+    .sort((a, b) => {
+      const layerA = getRenderLayerWeight(a);
+      const layerB = getRenderLayerWeight(b);
+      if (layerA !== layerB) return layerA - layerB;
+      return a.zIndex - b.zIndex;
+    })
+    .reverse()
+    .find((element) => elementContainsPoint(element, point));
+}
+
+function getRenderLayerWeight(element: WhiteboardElement) {
+  return element.type === 'pen' ? 1 : 0;
+}
+
+function elementContainsPoint(element: WhiteboardElement, point: Point) {
+  if (element.type === 'arrow' || element.type === 'pen') {
+    const translatedPoints = (element.type === 'arrow'
+      ? getArrowRenderablePoints({
+          points: element.properties.points,
+          lineStyle: element.properties.lineStyle,
+        })
+      : element.properties.points
+    ).map((candidate) => ({
+      x: candidate.x + element.x,
+      y: candidate.y + element.y,
+    }));
+    const threshold = Math.max(8, (element.properties.strokeWidth ?? 2) + 6);
+
+    for (let index = 0; index < translatedPoints.length - 1; index += 1) {
+      const distance = distancePointToSegment(point, translatedPoints[index], translatedPoints[index + 1]);
+      if (distance <= threshold) {
+        return true;
+      }
+    }
+  }
+
+  const bounds = getElementBounds(element);
+  return (
+    point.x >= bounds.left &&
+    point.x <= bounds.right &&
+    point.y >= bounds.top &&
+    point.y <= bounds.bottom
+  );
+}
+
+function distancePointToSegment(point: Point, start: Point, end: Point) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+  const projection = {
+    x: start.x + t * dx,
+    y: start.y + t * dy,
+  };
+
+  return Math.hypot(point.x - projection.x, point.y - projection.y);
+}
+
 function intersectsBox(
   a: { left: number; top: number; right: number; bottom: number },
   b: { left: number; top: number; right: number; bottom: number }
@@ -1570,12 +1861,14 @@ function PenSVG({
 }) {
   const { points, color, strokeWidth } = element.properties;
   if (!points || points.length < 2) return null;
-  const path = points
-    .map((point: Point, index: number) => `${index === 0 ? 'M' : 'L'} ${point.x + element.x} ${point.y + element.y}`)
-    .join(' ');
+  const translatedPoints = points.map((point: Point) => ({
+    x: point.x + element.x,
+    y: point.y + element.y,
+  }));
+  const path = buildSmoothPath(translatedPoints);
 
   return (
-    <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}>
+    <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible', zIndex: element.zIndex + 20000 }}>
       <path
         d={path}
         fill="none"

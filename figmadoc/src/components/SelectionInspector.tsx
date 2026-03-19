@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { insertArrowMidPoint } from '../lib/arrows';
 import { useStore } from '../store/useStore';
 import type {
   ArrowElement,
@@ -134,6 +135,46 @@ export function SelectionInspector() {
             step={1}
             value={toolDefaults.arrow.strokeWidth}
             onChange={(value) => updateToolDefaults('arrow', { strokeWidth: value })}
+          />
+          <FieldLabel>Start Tip</FieldLabel>
+          <SegmentedControl
+            value={toolDefaults.arrow.startArrowHead}
+            options={[
+              { value: 'none', label: 'None' },
+              { value: 'filled', label: 'Fill' },
+              { value: 'open', label: 'Open' },
+              { value: 'circle', label: 'Dot' },
+            ]}
+            onChange={(value) => updateToolDefaults('arrow', { startArrowHead: value as ArrowHead })}
+          />
+          <FieldLabel>End Tip</FieldLabel>
+          <SegmentedControl
+            value={toolDefaults.arrow.endArrowHead}
+            options={[
+              { value: 'none', label: 'None' },
+              { value: 'filled', label: 'Fill' },
+              { value: 'open', label: 'Open' },
+              { value: 'circle', label: 'Dot' },
+            ]}
+            onChange={(value) => updateToolDefaults('arrow', { endArrowHead: value as ArrowHead })}
+          />
+          <FieldLabel>Path</FieldLabel>
+      <SegmentedControl
+        value={toolDefaults.arrow.lineStyle}
+        options={[
+          { value: 'straight', label: 'Straight' },
+          { value: 'curved', label: 'Curved' },
+          { value: 'orthogonal', label: 'Square' },
+        ]}
+        onChange={(value) => updateToolDefaults('arrow', { lineStyle: value as 'straight' | 'curved' | 'orthogonal' })}
+      />
+          <NumberField
+            label="Curve"
+            min={0}
+            max={120}
+            step={2}
+            value={toolDefaults.arrow.curveOffset}
+            onChange={(value) => updateToolDefaults('arrow', { curveOffset: value })}
           />
         </InspectorShell>
       );
@@ -341,16 +382,39 @@ function ArrowInspector({
 }) {
   return (
     <>
-      <FieldLabel>Arrowhead</FieldLabel>
+      <FieldLabel>Start Tip</FieldLabel>
       <SegmentedControl
-        value={element.properties.arrowHead ?? 'filled'}
+        value={element.properties.startArrowHead ?? 'none'}
         options={[
-          { value: 'filled', label: 'Filled' },
-          { value: 'open', label: 'Open' },
-          { value: 'circle', label: 'Circle' },
           { value: 'none', label: 'None' },
+          { value: 'filled', label: 'Fill' },
+          { value: 'open', label: 'Open' },
+          { value: 'circle', label: 'Dot' },
         ]}
-        onChange={(value) => patchProperties(element, updateElement, { arrowHead: value as ArrowHead })}
+        onChange={(value) => patchProperties(element, updateElement, { startArrowHead: value as ArrowHead })}
+      />
+      <FieldLabel>End Tip</FieldLabel>
+      <SegmentedControl
+        value={element.properties.endArrowHead ?? element.properties.arrowHead ?? 'filled'}
+        options={[
+          { value: 'none', label: 'None' },
+          { value: 'filled', label: 'Fill' },
+          { value: 'open', label: 'Open' },
+          { value: 'circle', label: 'Dot' },
+        ]}
+        onChange={(value) => patchProperties(element, updateElement, { endArrowHead: value as ArrowHead })}
+      />
+      <FieldLabel>Path</FieldLabel>
+      <SegmentedControl
+        value={element.properties.lineStyle ?? 'straight'}
+        options={[
+          { value: 'straight', label: 'Straight' },
+          { value: 'curved', label: 'Curved' },
+          { value: 'orthogonal', label: 'Square' },
+        ]}
+        onChange={(value) =>
+          patchProperties(element, updateElement, { lineStyle: value as 'straight' | 'curved' | 'orthogonal' })
+        }
       />
       <ColorField
         label="Stroke"
@@ -365,6 +429,40 @@ function ArrowInspector({
         value={element.properties.strokeWidth ?? 2}
         onChange={(value) => patchProperties(element, updateElement, { strokeWidth: value })}
       />
+      <NumberField
+        label="Curve"
+        min={0}
+        max={120}
+        step={2}
+        value={element.properties.curveOffset ?? 36}
+        onChange={(value) => patchProperties(element, updateElement, { curveOffset: value })}
+      />
+      <FieldLabel>Path Edit</FieldLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+        <button
+          onClick={() =>
+            patchProperties(element, updateElement, {
+              points: insertArrowMidPoint({
+                points: element.properties.points,
+                lineStyle: element.properties.lineStyle ?? 'straight',
+              }),
+            })
+          }
+          style={secondaryActionStyle}
+        >
+          Add Bend
+        </button>
+        <button
+          onClick={() =>
+            patchProperties(element, updateElement, {
+              points: [element.properties.points[0], element.properties.points[element.properties.points.length - 1]],
+            })
+          }
+          style={secondaryActionStyle}
+        >
+          Reset
+        </button>
+      </div>
     </>
   );
 }
@@ -714,7 +812,7 @@ function SegmentedControl({
       style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))`,
-        gap: 6,
+        gap: 4,
       }}
     >
       {options.map((option) => {
@@ -724,8 +822,8 @@ function SegmentedControl({
             key={option.value}
             onClick={() => onChange(option.value)}
             style={{
-              height: 34,
-              borderRadius: 10,
+              height: 30,
+              borderRadius: 12,
               border: active ? '1px solid var(--primary)' : '1px solid var(--border-color)',
               background: active ? 'var(--primary)' : 'transparent',
               color: active ? 'var(--primary-contrast)' : 'var(--text-secondary)',
@@ -734,7 +832,7 @@ function SegmentedControl({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 4,
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 700,
             }}
           >
@@ -760,9 +858,9 @@ function InspectorShell({
       onPointerDown={(event) => event.stopPropagation()}
       style={{
         position: 'absolute',
-        top: 16,
-        right: 16,
-        width: 240,
+        top: 14,
+        right: 14,
+        width: 228,
         maxHeight: 'calc(100% - 58px)',
         overflowY: 'auto',
         background: 'var(--glass-bg)',
@@ -779,7 +877,7 @@ function InspectorShell({
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '10px 10px 8px',
+          padding: '8px 10px 7px',
           borderBottom: '1px solid var(--glass-border)',
           position: 'sticky',
           top: 0,
@@ -790,8 +888,8 @@ function InspectorShell({
       >
         <div
           style={{
-            width: 28,
-            height: 28,
+            width: 26,
+            height: 26,
             borderRadius: 8,
             background: 'var(--primary)',
             color: 'var(--primary-contrast)',
@@ -810,7 +908,7 @@ function InspectorShell({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gap: 10, padding: 10 }}>{children}</div>
+      <div style={{ display: 'grid', gap: 8, padding: 10 }}>{children}</div>
     </aside>
   );
 }
@@ -853,6 +951,7 @@ function iconForElement(element: WhiteboardElement) {
   if (element.type === 'arrow') return 'arrow_right_alt';
   if (element.type === 'pen') return 'edit';
   if (element.type === 'image') return 'image';
+  if (element.type === 'table') return 'table_chart';
   if (element.type === 'chart') return 'bar_chart';
   return 'code';
 }
@@ -864,18 +963,30 @@ function labelForElement(element: WhiteboardElement) {
   if (element.type === 'arrow') return 'Arrow';
   if (element.type === 'pen') return 'Pen';
   if (element.type === 'image') return 'Image';
+  if (element.type === 'table') return 'Data Table';
   if (element.type === 'chart') return 'Chart';
   return 'Code Block';
 }
 
 const inputStyle: CSSProperties = {
   width: '100%',
-  height: 36,
-  borderRadius: 10,
-  border: '1px solid var(--border-color)',
-  background: 'var(--bg-primary)',
+  height: 34,
+  borderRadius: 12,
+  border: '1px solid var(--glass-border)',
+  background: 'var(--glass-bg)',
   color: 'var(--text-primary)',
   padding: '0 10px',
-  fontSize: 12,
+  fontSize: 11,
   outline: 'none',
+};
+
+const secondaryActionStyle: CSSProperties = {
+  height: 32,
+  borderRadius: 12,
+  border: '1px solid var(--glass-border)',
+  background: 'var(--glass-bg)',
+  color: 'var(--text-primary)',
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: 'pointer',
 };

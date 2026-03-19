@@ -134,6 +134,10 @@ interface ToolDefaults {
   arrow: {
     color: string;
     strokeWidth: number;
+    startArrowHead: 'none' | 'filled' | 'open' | 'circle';
+    endArrowHead: 'none' | 'filled' | 'open' | 'circle';
+    lineStyle: 'straight' | 'curved' | 'orthogonal';
+    curveOffset: number;
   };
   pen: {
     color: string;
@@ -196,6 +200,10 @@ const makeInitialToolDefaults = (): ToolDefaults => ({
   arrow: {
     color: '#000000',
     strokeWidth: 2,
+    startArrowHead: 'none',
+    endArrowHead: 'filled',
+    lineStyle: 'straight',
+    curveOffset: 36,
   },
   pen: {
     color: '#000000',

@@ -48,7 +48,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
   const runtime = element.properties.runtime ?? inferRuntime(js, html);
   const tabs = runtime === 'react' ? (['js', 'preview'] as Tab[]) : (['html', 'css', 'js', 'preview'] as Tab[]);
   const [tab, setTab] = useState<Tab>(runtime === 'react' ? 'js' : 'html');
-  const [codeTheme, setCodeTheme] = useState<CodeTheme>('vscode-dark');
+  const [codeTheme, setCodeTheme] = useState<CodeTheme>(element.properties.theme ?? 'vscode-dark');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [running, setRunning] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -100,6 +100,16 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
     });
   };
 
+  const updateTheme = (value: CodeTheme) => {
+    setCodeTheme(value);
+    updateElement(element.id, {
+      properties: {
+        ...element.properties,
+        theme: value,
+      },
+    });
+  };
+
   const run = useCallback(() => {
     if (!previewRef.current) return;
     setRunning(true);
@@ -130,6 +140,10 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
       setTab('js');
     }
   }, [runtime, tab]);
+
+  useEffect(() => {
+    setCodeTheme(element.properties.theme ?? 'vscode-dark');
+  }, [element.properties.theme]);
 
   useEffect(() => {
     return () => cleanupRef.current?.();
@@ -202,15 +216,22 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
     borderRadius: 20,
   };
 
+  const isLightTheme = codeTheme === 'vscode-light';
+  const shellBackground = isLightTheme ? 'rgba(248,250,252,0.96)' : 'var(--code-bg)';
+  const shellForeground = isLightTheme ? '#0f172a' : 'var(--code-fg)';
+  const shellBorder = isLightTheme ? 'rgba(148,163,184,0.26)' : 'rgba(255,255,255,0.12)';
+  const toolbarBackground = isLightTheme ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.05)';
+  const previewBackground = isLightTheme ? '#ffffff' : '#ffffff';
+
   const renderPanel = (mode: 'inline' | 'modal') => (
       <div
         ref={mode === 'inline' ? panelRef : undefined}
         data-code-block="true"
         style={{
           ...(mode === 'modal' ? modalBox : inlineBox),
-          background: 'var(--code-bg)',
-          color: 'var(--code-fg)',
-          border: '1px solid rgba(255,255,255,0.12)',
+          background: shellBackground,
+          color: shellForeground,
+          border: `1px solid ${shellBorder}`,
           overflow: 'hidden',
           boxShadow: selected || mode === 'modal'
             ? '0 0 0 2px var(--primary), 0 16px 40px rgba(0,0,0,0.35)'
@@ -230,8 +251,8 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '10px 12px',
-            background: 'rgba(255,255,255,0.05)',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            background: toolbarBackground,
+            borderBottom: `1px solid ${shellBorder}`,
             flexShrink: 0,
           }}
         >
@@ -244,7 +265,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
-                    border: '1px solid rgba(255,255,255,0.35)',
+                    border: `1px solid ${isLightTheme ? 'rgba(15,23,42,0.28)' : 'rgba(255,255,255,0.35)'}`,
                   }}
                 />
               ))}
@@ -253,7 +274,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
             <span
               style={{
                 fontSize: 12,
-                color: 'rgba(255,255,255,0.7)',
+                color: isLightTheme ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.7)',
                 fontFamily: 'JetBrains Mono',
               }}
             >
@@ -270,9 +291,9 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
               style={{
                 height: 28,
                 borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.14)',
-                background: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.82)',
+                border: `1px solid ${shellBorder}`,
+                background: isLightTheme ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.08)',
+                color: isLightTheme ? 'rgba(15,23,42,0.82)' : 'rgba(255,255,255,0.82)',
                 padding: '0 8px',
                 fontSize: 10.5,
                 fontFamily: 'JetBrains Mono',
@@ -288,14 +309,14 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
             <select
               value={codeTheme}
               onPointerDown={(event) => event.stopPropagation()}
-              onChange={(event) => setCodeTheme(event.target.value as CodeTheme)}
+              onChange={(event) => updateTheme(event.target.value as CodeTheme)}
               title="Editor theme"
               style={{
                 height: 28,
                 borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.14)',
-                background: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.82)',
+                border: `1px solid ${shellBorder}`,
+                background: isLightTheme ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.08)',
+                color: isLightTheme ? 'rgba(15,23,42,0.82)' : 'rgba(255,255,255,0.82)',
                 padding: '0 8px',
                 fontSize: 10.5,
                 fontFamily: 'JetBrains Mono',
@@ -320,8 +341,8 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
                   fontSize: 10.5,
                   fontFamily: 'JetBrains Mono',
                   cursor: 'pointer',
-                  background: tab === currentTab ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
-                  color: tab === currentTab ? 'var(--primary-contrast)' : 'rgba(255,255,255,0.72)',
+                  background: tab === currentTab ? 'var(--primary)' : isLightTheme ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.08)',
+                  color: tab === currentTab ? 'var(--primary-contrast)' : isLightTheme ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)',
                   fontWeight: tab === currentTab ? 700 : 500,
                   transition: 'all 0.12s',
                   textTransform: 'uppercase',
@@ -369,8 +390,8 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
                 height: 28,
                 borderRadius: 6,
                 border: 'none',
-                background: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.72)',
+                background: isLightTheme ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.08)',
+                color: isLightTheme ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.72)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -414,7 +435,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
             style={{
               flex: tab === 'preview' ? 1 : 0,
               display: tab === 'preview' ? 'block' : 'none',
-              background: '#ffffff',
+              background: previewBackground,
               overflow: 'hidden',
             }}
             onWheel={(event) => event.stopPropagation()}
@@ -423,8 +444,8 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
           {logs.length > 0 && (
             <div
               style={{
-                borderTop: '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(255,255,255,0.04)',
+                borderTop: `1px solid ${shellBorder}`,
+                background: isLightTheme ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.04)',
                 maxHeight: mode === 'modal' ? 220 : 120,
                 overflowY: 'auto',
                 padding: '8px 12px',
@@ -435,7 +456,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
               <div
                 style={{
                   fontSize: 10,
-                  color: 'rgba(255,255,255,0.45)',
+                  color: isLightTheme ? 'rgba(15,23,42,0.45)' : 'rgba(255,255,255,0.45)',
                   marginBottom: 6,
                   textTransform: 'uppercase',
                   letterSpacing: '0.08em',
@@ -449,7 +470,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
                   style={{
                     fontSize: 11.5,
                     fontFamily: 'JetBrains Mono',
-                    color: 'rgba(255,255,255,0.88)',
+                    color: isLightTheme ? 'rgba(15,23,42,0.88)' : 'rgba(255,255,255,0.88)',
                     marginBottom: 4,
                     lineHeight: 1.45,
                     display: 'flex',

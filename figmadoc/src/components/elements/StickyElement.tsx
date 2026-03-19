@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import type { StickyElement as StickyEl } from '../../types';
 import { useStore } from '../../store/useStore';
 import { ElementResizeHandles } from './ElementResizeHandles';
@@ -11,6 +12,22 @@ interface Props {
 
 export function StickyElementComponent({ element, selected, zoom, onPointerDown }: Props) {
   const { updateElement } = useStore();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const autoResize = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const nextHeight = Math.max(80, textarea.scrollHeight + 28);
+    textarea.style.height = `${Math.max(0, nextHeight - 28)}px`;
+    if (Math.abs(nextHeight - element.height) > 1) {
+      updateElement(element.id, { height: nextHeight });
+    }
+  }, [element.height, element.id, updateElement]);
+
+  useEffect(() => {
+    autoResize();
+  }, [autoResize, element.properties.text]);
 
   return (
     <div
@@ -38,12 +55,14 @@ export function StickyElementComponent({ element, selected, zoom, onPointerDown 
       onPointerDown={onPointerDown}
     >
       <textarea
+        ref={textareaRef}
         value={element.properties.text}
-        onChange={(event) =>
+        onChange={(event) => {
           updateElement(element.id, {
             properties: { ...element.properties, text: event.target.value },
-          })
-        }
+          });
+          requestAnimationFrame(autoResize);
+        }}
         onPointerDown={(event) => event.stopPropagation()}
         placeholder="Type your note..."
         style={{

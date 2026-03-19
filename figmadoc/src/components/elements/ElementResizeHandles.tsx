@@ -53,8 +53,10 @@ export function ElementResizeHandles({
     const { x, y, width, height } = element;
     const right = x + width;
     const bottom = y + height;
+    let frame = 0;
+    let lastEvent: PointerEvent | null = null;
 
-    const onMove = (nextEvent: PointerEvent) => {
+    const applyResize = (nextEvent: PointerEvent) => {
       const dx = (nextEvent.clientX - startX) / zoom;
       const dy = (nextEvent.clientY - startY) / zoom;
 
@@ -84,7 +86,24 @@ export function ElementResizeHandles({
       onResize({ x: nextX, y: nextY, width: nextWidth, height: nextHeight });
     };
 
+    const onMove = (nextEvent: PointerEvent) => {
+      lastEvent = nextEvent;
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        if (lastEvent) {
+          applyResize(lastEvent);
+        }
+        frame = 0;
+      });
+    };
+
     const onUp = () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      if (lastEvent) {
+        applyResize(lastEvent);
+      }
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
@@ -101,13 +120,14 @@ export function ElementResizeHandles({
           onPointerDown={(event) => onHandleDown(event, pos)}
           style={{
             position: 'absolute',
-            width: 10,
-            height: 10,
+            width: 12,
+            height: 12,
             borderRadius: '50%',
-            background: 'var(--primary)',
-            border: '2px solid var(--primary-contrast)',
-            boxShadow: '0 0 0 1px rgba(0,0,0,0.1)',
+            background: 'var(--glass-bg)',
+            border: '2px solid var(--primary)',
+            boxShadow: '0 10px 24px rgba(15, 23, 42, 0.18)',
             cursor,
+            touchAction: 'none',
             ...style,
           }}
         />

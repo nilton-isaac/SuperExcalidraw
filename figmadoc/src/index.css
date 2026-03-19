@@ -1,39 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Space+Grotesk:wght@400;500;700&family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Fira+Code:wght@400;500;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Fira+Code:wght@400;500;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,400..700,0..100,0..1&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Sora:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
 
 @import "tailwindcss";
 
 :root {
-  --primary: #000000;
-  --primary-contrast: #ffffff;
-  --bg-primary: #ffffff;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: rgba(0, 0, 0, 0.045);
-  --bg-elevated: #ffffff;
-  --text-primary: #000000;
-  --text-secondary: rgba(0, 0, 0, 0.72);
-  --text-muted: rgba(0, 0, 0, 0.46);
-  --border-color: rgba(0, 0, 0, 0.18);
-  --border-strong: #000000;
-  --danger: #000000;
-  --code-bg: #000000;
-  --code-fg: #ffffff;
-  --canvas-bg: #ffffff;
-  --doc-canvas-bg: #f3efe8;
-  --doc-surface: #fffdf8;
-  --doc-ink: #1d1b18;
-  --doc-ink-soft: rgba(29, 27, 24, 0.78);
-  --doc-border: rgba(29, 27, 24, 0.12);
-  --doc-shadow: 0 28px 90px rgba(30, 26, 20, 0.1);
-  --grid-color: rgba(0, 0, 0, 0.15);
-  --backdrop: rgba(0, 0, 0, 0.6);
-  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.16);
-  --glass-bg: rgba(255, 255, 255, 0.78);
-  --glass-border: rgba(0, 0, 0, 0.1);
-  --glass-blur: blur(16px);
-  --bg-panel: rgba(252, 252, 252, 0.88);
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: rgba(0, 0, 0, 0.055);
+  --primary: #111827;
+  --primary-contrast: #f8fbff;
+  --bg-primary: rgba(255, 255, 255, 0.68);
+  --bg-secondary: #eef3fb;
+  --bg-tertiary: rgba(15, 23, 42, 0.06);
+  --bg-elevated: rgba(255, 255, 255, 0.86);
+  --text-primary: #0f172a;
+  --text-secondary: rgba(15, 23, 42, 0.74);
+  --text-muted: rgba(15, 23, 42, 0.46);
+  --border-color: rgba(148, 163, 184, 0.28);
+  --border-strong: rgba(15, 23, 42, 0.84);
+  --danger: #dc2626;
+  --code-bg: #0f172a;
+  --code-fg: #eff6ff;
+  --canvas-bg: #edf2fb;
+  --doc-canvas-bg: linear-gradient(180deg, rgba(240, 245, 255, 0.95), rgba(236, 242, 250, 0.9));
+  --doc-surface: rgba(255, 255, 255, 0.78);
+  --doc-toolbar-bg: rgba(255, 255, 255, 0.62);
+  --doc-ink: #14213d;
+  --doc-ink-soft: rgba(20, 33, 61, 0.74);
+  --doc-border: rgba(148, 163, 184, 0.24);
+  --doc-shadow: 0 28px 90px rgba(71, 85, 105, 0.18);
+  --grid-color: rgba(148, 163, 184, 0.18);
+  --backdrop: rgba(15, 23, 42, 0.42);
+  --shadow-md: 0 18px 44px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 30px 80px rgba(15, 23, 42, 0.18);
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-border: rgba(148, 163, 184, 0.26);
+  --glass-blur: blur(24px);
+  --bg-panel: rgba(255, 255, 255, 0.66);
+  --app-gradient-1: rgba(125, 211, 252, 0.28);
+  --app-gradient-2: rgba(196, 181, 253, 0.2);
+  --app-gradient-3: rgba(251, 191, 183, 0.2);
+  --pointer-glow-center: rgba(15, 23, 42, 0.12);
+  --pointer-glow-mid: rgba(255, 255, 255, 0.08);
+  --pointer-glow-blend: multiply;
   --gray-100: #f7f7f7;
   --gray-200: #efefef;
   --gray-300: #e0e0e0;
@@ -50,37 +55,42 @@
 }
 
 [data-theme="dark"] {
-  --primary: #ffffff;
-  --primary-contrast: #000000;
-  --bg-primary: #000000;
-  --bg-secondary: #000000;
-  --bg-tertiary: rgba(255, 255, 255, 0.08);
-  --bg-elevated: #000000;
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.8);
-  --text-muted: rgba(255, 255, 255, 0.5);
-  --border-color: rgba(255, 255, 255, 0.2);
-  --border-strong: #ffffff;
-  --danger: #ffffff;
-  --code-bg: #000000;
-  --code-fg: #ffffff;
-  --canvas-bg: #000000;
-  --doc-canvas-bg: #11100f;
-  --doc-surface: #1b1917;
-  --doc-ink: #f3ede4;
-  --doc-ink-soft: rgba(243, 237, 228, 0.78);
-  --doc-border: rgba(243, 237, 228, 0.12);
-  --doc-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
-  --grid-color: rgba(255, 255, 255, 0.14);
-  --backdrop: rgba(0, 0, 0, 0.72);
-  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.55);
-  --glass-bg: rgba(18, 18, 18, 0.82);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-blur: blur(16px);
-  --bg-panel: rgba(12, 12, 12, 0.9);
-  --bg-secondary: #0a0a0a;
+  --primary: #f8fafc;
+  --primary-contrast: #020617;
+  --bg-primary: rgba(12, 18, 32, 0.72);
+  --bg-secondary: #030712;
   --bg-tertiary: rgba(255, 255, 255, 0.06);
+  --bg-elevated: rgba(8, 15, 28, 0.88);
+  --text-primary: #f8fafc;
+  --text-secondary: rgba(226, 232, 240, 0.82);
+  --text-muted: rgba(148, 163, 184, 0.72);
+  --border-color: rgba(148, 163, 184, 0.18);
+  --border-strong: rgba(248, 250, 252, 0.84);
+  --danger: #f87171;
+  --code-bg: #020617;
+  --code-fg: #e2e8f0;
+  --canvas-bg: #050b16;
+  --doc-canvas-bg: linear-gradient(180deg, rgba(6, 11, 24, 0.96), rgba(10, 18, 32, 0.98));
+  --doc-surface: rgba(9, 15, 28, 0.78);
+  --doc-toolbar-bg: rgba(7, 13, 24, 0.72);
+  --doc-ink: #f8fafc;
+  --doc-ink-soft: rgba(226, 232, 240, 0.76);
+  --doc-border: rgba(148, 163, 184, 0.16);
+  --doc-shadow: 0 34px 90px rgba(0, 0, 0, 0.45);
+  --grid-color: rgba(148, 163, 184, 0.16);
+  --backdrop: rgba(2, 6, 23, 0.76);
+  --shadow-md: 0 18px 44px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 30px 90px rgba(0, 0, 0, 0.52);
+  --glass-bg: rgba(9, 15, 28, 0.62);
+  --glass-border: rgba(148, 163, 184, 0.16);
+  --glass-blur: blur(24px);
+  --bg-panel: rgba(7, 13, 24, 0.78);
+  --app-gradient-1: rgba(56, 189, 248, 0.12);
+  --app-gradient-2: rgba(129, 140, 248, 0.12);
+  --app-gradient-3: rgba(244, 114, 182, 0.08);
+  --pointer-glow-center: rgba(186, 230, 253, 0.07);
+  --pointer-glow-mid: rgba(56, 189, 248, 0.025);
+  --pointer-glow-blend: screen;
   --gray-100: #1a1a1a;
   --gray-200: #242424;
   --gray-300: #2e2e2e;
@@ -121,6 +131,33 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  position: relative;
+}
+
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: auto;
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(80px);
+}
+
+body::before {
+  top: -16vh;
+  left: -8vw;
+  width: 46vw;
+  height: 46vw;
+  background: var(--app-gradient-1);
+}
+
+body::after {
+  right: -10vw;
+  bottom: -20vh;
+  width: 42vw;
+  height: 42vw;
+  background: linear-gradient(180deg, var(--app-gradient-2), var(--app-gradient-3));
 }
 
 button,
@@ -270,14 +307,15 @@ select {
 }
 
 .tiptap pre {
-  background: #1e1e1e;
+  background: #0f172a;
   color: #d4d4d4;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 18px;
   margin: 1rem 0;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.08);
   position: relative;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
 }
 
 .tiptap pre::before {
@@ -296,12 +334,24 @@ select {
 .tiptap pre code {
   background: none;
   color: #d4d4d4;
-  padding: 1rem 1.25rem;
+  padding: 1.1rem 1.25rem;
   display: block;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   line-height: 1.65;
   overflow-x: auto;
+}
+
+.tiptap pre[data-code-theme="graphite"] {
+  background: linear-gradient(180deg, #0f172a, #111827);
+}
+
+.tiptap pre[data-code-theme="ocean"] {
+  background: linear-gradient(180deg, #06243b, #0b3954);
+}
+
+.tiptap pre[data-code-theme="sunset"] {
+  background: linear-gradient(180deg, #2b1b33, #4a1d3f);
 }
 
 /* highlight.js — VSCode Dark+ token colors */
@@ -353,6 +403,12 @@ select {
   color: var(--text-primary);
 }
 
+.tiptap a {
+  color: color-mix(in srgb, var(--primary) 72%, #4f46e5);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 .tiptap mark {
   background: var(--primary);
   color: var(--primary-contrast);
@@ -396,8 +452,10 @@ select {
   background: var(--doc-surface);
   color: var(--doc-ink);
   border: 1px solid var(--doc-border);
-  border-radius: 28px;
+  border-radius: 34px;
   box-shadow: var(--doc-shadow);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
 }
 
 .document-sheet .tiptap {
@@ -437,6 +495,21 @@ select {
 
 .document-sheet .tiptap code {
   background: color-mix(in srgb, var(--doc-ink) 10%, transparent);
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 18px;
+  margin: 18px 0;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+}
+
+.ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid color-mix(in srgb, var(--primary) 72%, transparent);
+  outline-offset: 4px;
 }
 
 .document-sheet-footer {

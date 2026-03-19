@@ -26,8 +26,11 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
     ta.style.height = 'auto';
     const newHeight = Math.max(36, ta.scrollHeight);
     ta.style.height = `${newHeight}px`;
-    updateElement(element.id, { height: newHeight });
-  }, [element.id, updateElement]);
+    const lines = ta.value.split(/\r?\n/);
+    const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
+    const newWidth = Math.max(140, Math.min(680, longestLine * ((element.properties.fontSize ?? 18) * 0.58) + 28));
+    updateElement(element.id, { height: newHeight, width: newWidth });
+  }, [element.id, element.properties.fontSize, updateElement]);
 
   useEffect(() => {
     if (editing) {
@@ -66,7 +69,7 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
             updateElement(element.id, {
               properties: { ...element.properties, text: event.target.value },
             });
-            autoResize();
+            requestAnimationFrame(autoResize);
           }}
           onBlur={commit}
           onPointerDown={(event) => event.stopPropagation()}

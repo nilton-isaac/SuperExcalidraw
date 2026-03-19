@@ -139,9 +139,9 @@ export default function App() {
               [isH ? 'width' : 'height']: 4,
               [isH ? 'height' : 'width']: '100%',
               flexShrink: 0,
-              background: 'var(--border-color)',
+              background: 'color-mix(in srgb, var(--glass-border) 80%, transparent)',
               cursor: isH ? 'col-resize' : 'row-resize',
-              transition: 'background 0.15s',
+              transition: 'background 0.15s ease',
               zIndex: 10,
             }}
             onMouseEnter={(e) => {
