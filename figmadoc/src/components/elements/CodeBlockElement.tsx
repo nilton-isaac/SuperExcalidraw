@@ -205,6 +205,7 @@ export function CodeBlockElement({ element, selected, zoom, onPointerDown }: Pro
   const renderPanel = (mode: 'inline' | 'modal') => (
       <div
         ref={mode === 'inline' ? panelRef : undefined}
+        data-code-block="true"
         style={{
           ...(mode === 'modal' ? modalBox : inlineBox),
           background: 'var(--code-bg)',

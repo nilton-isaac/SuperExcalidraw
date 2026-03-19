@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TextElement as TextEl } from '../../types';
 import { useStore } from '../../store/useStore';
 import { ElementResizeHandles } from './ElementResizeHandles';
@@ -15,12 +15,28 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const commit = () => setEditing(false);
-
   const fontFamily = element.properties.fontFamily ?? 'Inter';
   const fontWeight = element.properties.fontWeight ?? 'normal';
   const color = element.properties.color ?? '#000000';
   const textAlign = element.properties.textAlign ?? 'left';
+
+  const autoResize = useCallback(() => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const newHeight = Math.max(36, ta.scrollHeight);
+    ta.style.height = `${newHeight}px`;
+    updateElement(element.id, { height: newHeight });
+  }, [element.id, updateElement]);
+
+  useEffect(() => {
+    if (editing) {
+      autoResize();
+      inputRef.current?.focus();
+    }
+  }, [editing, autoResize]);
+
+  const commit = () => setEditing(false);
 
   return (
     <div
@@ -40,26 +56,23 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
         transformOrigin: 'center center',
       }}
       onPointerDown={onPointerDown}
-      onDoubleClick={() => {
-        setEditing(true);
-        setTimeout(() => inputRef.current?.focus(), 0);
-      }}
+      onDoubleClick={() => setEditing(true)}
     >
       {editing ? (
         <textarea
           ref={inputRef}
           value={element.properties.text}
-          onChange={(event) =>
+          onChange={(event) => {
             updateElement(element.id, {
               properties: { ...element.properties, text: event.target.value },
-            })
-          }
+            });
+            autoResize();
+          }}
           onBlur={commit}
           onPointerDown={(event) => event.stopPropagation()}
           style={{
             width: '100%',
             minHeight: element.height,
-            height: '100%',
             background: 'var(--bg-primary)',
             border: '1px solid var(--primary)',
             borderRadius: 6,
@@ -72,6 +85,8 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
             fontFamily,
             lineHeight: 1.4,
             textAlign,
+            overflow: 'hidden',
+            display: 'block',
           }}
         />
       ) : (

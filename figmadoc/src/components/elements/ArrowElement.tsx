@@ -1,4 +1,4 @@
-import type { ArrowElement as ArrowEl } from '../../types';
+import type { ArrowElement as ArrowEl, ArrowHead } from '../../types';
 
 interface Props {
   element: ArrowEl;
@@ -6,8 +6,47 @@ interface Props {
   onPointerDown: (event: React.PointerEvent) => void;
 }
 
+function buildMarker(id: string, arrowHead: ArrowHead, size: number, color: string) {
+  if (arrowHead === 'none') return null;
+
+  if (arrowHead === 'filled') {
+    return (
+      <marker id={id} markerWidth={size} markerHeight={size} refX={size} refY={size / 2} orient="auto">
+        <polygon points={`0 0, ${size} ${size / 2}, 0 ${size}`} fill={color} />
+      </marker>
+    );
+  }
+
+  if (arrowHead === 'open') {
+    const half = size / 2;
+    return (
+      <marker id={id} markerWidth={size} markerHeight={size} refX={size - 1} refY={half} orient="auto">
+        <polyline
+          points={`0 0, ${size} ${half}, 0 ${size}`}
+          fill="none"
+          stroke={color}
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </marker>
+    );
+  }
+
+  if (arrowHead === 'circle') {
+    const r = size / 2 - 1;
+    return (
+      <marker id={id} markerWidth={size} markerHeight={size} refX={size - 1} refY={size / 2} orient="auto">
+        <circle cx={r + 1} cy={size / 2} r={r} fill={color} />
+      </marker>
+    );
+  }
+
+  return null;
+}
+
 export function ArrowElementComponent({ element, selected, onPointerDown }: Props) {
-  const { points, color = '#000000', strokeWidth = 2 } = element.properties;
+  const { points, color = '#000000', strokeWidth = 2, arrowHead = 'filled' } = element.properties;
   if (points.length < 2) return null;
 
   const allX = points.map((point) => point.x);
@@ -25,6 +64,8 @@ export function ArrowElementComponent({ element, selected, onPointerDown }: Prop
 
   const stroke = selected ? 'var(--primary)' : color;
   const markerSize = Math.max(8, (selected ? strokeWidth + 1 : strokeWidth) * 4);
+  const markerId = `arrowhead-${element.id}`;
+  const marker = buildMarker(markerId, arrowHead, markerSize, stroke);
 
   return (
     <div
@@ -49,27 +90,13 @@ export function ArrowElementComponent({ element, selected, onPointerDown }: Prop
           pointerEvents: 'all',
         }}
       >
-        <defs>
-          <marker
-            id={`arrowhead-${element.id}`}
-            markerWidth={markerSize}
-            markerHeight={markerSize}
-            refX={markerSize}
-            refY={markerSize / 2}
-            orient="auto"
-          >
-            <polygon
-              points={`0 0, ${markerSize} ${markerSize / 2}, 0 ${markerSize}`}
-              fill={stroke}
-            />
-          </marker>
-        </defs>
+        {marker && <defs>{marker}</defs>}
         <path
           d={pathDefinition}
           fill="none"
           stroke={stroke}
           strokeWidth={selected ? strokeWidth + 1 : strokeWidth}
-          markerEnd={`url(#arrowhead-${element.id})`}
+          markerEnd={marker ? `url(#${markerId})` : undefined}
           strokeLinecap="round"
           strokeLinejoin="round"
         />

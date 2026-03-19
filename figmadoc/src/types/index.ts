@@ -45,10 +45,13 @@ export interface CodeProperties {
   title?: string;
   runtime?: CodeRuntime;
 }
+export type ArrowHead = 'filled' | 'open' | 'circle' | 'none';
+
 export interface ArrowProperties {
   points: Point[];
   color?: string;
   strokeWidth?: number;
+  arrowHead?: ArrowHead;
 }
 export interface TextProperties {
   text: string;

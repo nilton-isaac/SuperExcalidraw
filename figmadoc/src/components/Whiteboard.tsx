@@ -284,6 +284,14 @@ export function Whiteboard() {
     if (!element) return;
 
     const onWheel = (event: WheelEvent) => {
+      // Allow native scroll inside code blocks (CodeMirror editors)
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest('[data-code-block="true"]') &&
+        !event.ctrlKey && !event.metaKey
+      ) {
+        return;
+      }
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) {
         const factor = event.deltaY < 0 ? 1.08 : 0.93;
@@ -805,8 +813,8 @@ export function Whiteboard() {
               <path
                 d={penPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')}
                 fill="none"
-                stroke="var(--text-primary)"
-                strokeWidth={2}
+                stroke={toolDefaults.pen.color}
+                strokeWidth={toolDefaults.pen.strokeWidth}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />

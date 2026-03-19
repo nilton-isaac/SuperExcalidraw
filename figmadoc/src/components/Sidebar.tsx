@@ -56,8 +56,12 @@ const CODE_LANGUAGES = [
 const FONT_OPTIONS = [
   { label: 'Inter', value: 'Inter' },
   { label: 'Space Grotesk', value: 'Space Grotesk' },
+  { label: 'Poppins', value: 'Poppins' },
+  { label: 'DM Sans', value: 'DM Sans' },
   { label: 'Merriweather', value: 'Merriweather' },
+  { label: 'Playfair Display', value: 'Playfair Display' },
   { label: 'JetBrains Mono', value: 'JetBrains Mono' },
+  { label: 'Fira Code', value: 'Fira Code' },
 ];
 
 const TEXT_COLORS = ['#000000', '#ffffff', '#6b7280', '#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea'];
@@ -601,6 +605,20 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
       icon: 'format_italic',
     },
     {
+      key: 'bold-italic',
+      title: 'Bold + Italic',
+      active: () => editor.isActive('bold') && editor.isActive('italic'),
+      run: () => {
+        const isBoldItalic = editor.isActive('bold') && editor.isActive('italic');
+        if (isBoldItalic) {
+          editor.chain().focus().unsetBold().unsetItalic().run();
+        } else {
+          editor.chain().focus().setBold().setItalic().run();
+        }
+      },
+      label: 'B/I',
+    },
+    {
       key: 'strike',
       title: 'Strikethrough',
       active: () => editor.isActive('strike'),
@@ -694,8 +712,8 @@ function FormatBar({ editor, tone }: { editor: Editor; tone: 'app' | 'doc' }) {
       style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: 6,
-        padding: '10px 12px',
+        gap: tone === 'doc' ? 3 : 6,
+        padding: tone === 'doc' ? '6px 10px' : '10px 12px',
         borderBottom: `1px solid ${border}`,
         background: tone === 'doc' ? 'var(--doc-canvas-bg)' : 'var(--bg-secondary)',
         flexShrink: 0,
@@ -850,15 +868,17 @@ function FormatButton({
   const activeColor = tone === 'doc' ? 'var(--doc-surface)' : 'var(--primary-contrast)';
   const idleColor = tone === 'doc' ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
 
+  const btnSize = tone === 'doc' ? 26 : 32;
+
   return (
     <button
       title={title}
       onMouseDown={onMouseDown}
       style={{
-        minWidth: 32,
-        height: 32,
-        padding: '0 10px',
-        borderRadius: 8,
+        minWidth: btnSize,
+        height: btnSize,
+        padding: tone === 'doc' ? '0 6px' : '0 10px',
+        borderRadius: tone === 'doc' ? 6 : 8,
         border: '1px solid transparent',
         background: active ? activeBackground : 'transparent',
         color: active ? activeColor : idleColor,
@@ -867,7 +887,7 @@ function FormatButton({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: 700,
       }}
     >

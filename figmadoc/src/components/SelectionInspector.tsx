@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useStore } from '../store/useStore';
 import type {
   ArrowElement,
+  ArrowHead,
   CodeElement,
   ImageElement,
   PenElement,
@@ -13,7 +14,7 @@ import type {
 } from '../types';
 import { Icon } from './Icon';
 
-const FONT_OPTIONS = ['Inter', 'Space Grotesk', 'Merriweather', 'JetBrains Mono'];
+const FONT_OPTIONS = ['Inter', 'Space Grotesk', 'Poppins', 'DM Sans', 'Merriweather', 'Playfair Display', 'JetBrains Mono', 'Fira Code'];
 const COLOR_SWATCHES = ['#000000', '#ffffff', '#6b7280', '#ef4444', '#f59e0b', '#16a34a', '#2563eb', '#9333ea'];
 
 export function SelectionInspector() {
@@ -335,6 +336,17 @@ function ArrowInspector({
 }) {
   return (
     <>
+      <FieldLabel>Arrowhead</FieldLabel>
+      <SegmentedControl
+        value={element.properties.arrowHead ?? 'filled'}
+        options={[
+          { value: 'filled', label: 'Filled' },
+          { value: 'open', label: 'Open' },
+          { value: 'circle', label: 'Circle' },
+          { value: 'none', label: 'None' },
+        ]}
+        onChange={(value) => patchProperties(element, updateElement, { arrowHead: value as ArrowHead })}
+      />
       <ColorField
         label="Stroke"
         value={element.properties.color ?? '#000000'}
