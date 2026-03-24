@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function ShapeElementComponent({ element, selected, zoom, onPointerDown }: Props) {
-  const { updateElement } = useStore();
+  const { updateElement, selectedIds } = useStore();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(element.properties.text ?? '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -50,12 +50,23 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   const handlePointerDown = useCallback((event: React.PointerEvent) => onPointerDown(event), [onPointerDown]);
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
-      if (editing || event.detail < 2) return;
+      if (
+        editing ||
+        !selected ||
+        selectedIds.length !== 1 ||
+        event.detail < 2 ||
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       startEditing();
     },
-    [editing, startEditing]
+    [editing, selected, selectedIds.length, startEditing]
   );
 
   const shapeStyle: CSSProperties = {
@@ -92,6 +103,8 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
     transform: shapeType === 'diamond' ? 'rotate(45deg)' : undefined,
     boxShadow: selected ? '0 0 0 2px var(--primary), 0 12px 24px rgba(0,0,0,0.12)' : undefined,
     overflow: 'hidden',
+    pointerEvents: editing ? 'auto' : 'none',
+    userSelect: editing ? 'text' : 'none',
   };
 
   return (

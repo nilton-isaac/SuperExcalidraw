@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function TextElementComponent({ element, selected, zoom = 1, onPointerDown }: Props) {
-  const { updateElement } = useStore();
+  const { updateElement, selectedIds } = useStore();
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,12 +46,23 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
   const handlePointerDown = useCallback((event: React.PointerEvent) => onPointerDown(event), [onPointerDown]);
   const handleClick = useCallback(
     (event: React.MouseEvent) => {
-      if (editing || event.detail < 2) return;
+      if (
+        editing ||
+        !selected ||
+        selectedIds.length !== 1 ||
+        event.detail < 2 ||
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       startEditing();
     },
-    [editing, startEditing]
+    [editing, selected, selectedIds.length, startEditing]
   );
 
   const commit = () => setEditing(false);
@@ -122,7 +133,9 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
             wordBreak: 'break-word',
             padding: 2,
             textAlign,
-            cursor: 'text',
+            cursor: 'inherit',
+            pointerEvents: 'none',
+            userSelect: 'none',
           }}
         >
           {element.properties.text || (
