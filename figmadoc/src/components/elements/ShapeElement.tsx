@@ -16,6 +16,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(element.properties.text ?? '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastPointerDownRef = useRef<{ time: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     setText(element.properties.text ?? '');
@@ -42,22 +43,35 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
     });
   };
 
-  const startEditing = useCallback((event?: React.MouseEvent) => {
-    event?.stopPropagation();
-    event?.preventDefault();
+  const startEditing = useCallback(() => {
     setEditing(true);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent) => {
-      if (!editing && event.detail >= 2) {
+      const lastPointerDown = lastPointerDownRef.current;
+      const isManualDoubleClick =
+        !!lastPointerDown &&
+        event.timeStamp - lastPointerDown.time <= 320 &&
+        Math.hypot(event.clientX - lastPointerDown.x, event.clientY - lastPointerDown.y) <= 8;
+
+      if (!editing && (event.detail >= 2 || isManualDoubleClick)) {
+        lastPointerDownRef.current = null;
+        event.preventDefault();
         event.stopPropagation();
+        startEditing();
         return;
       }
+
+      lastPointerDownRef.current = {
+        time: event.timeStamp,
+        x: event.clientX,
+        y: event.clientY,
+      };
       onPointerDown(event);
     },
-    [editing, onPointerDown]
+    [editing, onPointerDown, startEditing]
   );
 
   const shapeStyle: CSSProperties = {
@@ -97,7 +111,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   };
 
   return (
-    <div style={shapeStyle} onPointerDown={handlePointerDown} onDoubleClick={startEditing}>
+    <div style={shapeStyle} onPointerDown={handlePointerDown}>
       <div style={innerStyle}>
         {editing ? (
           <textarea
