@@ -79,7 +79,13 @@ export function Header() {
     createBoard,
   } = useStore();
 
-  const { status: authStatus, pushBoardToCloud } = useAuthStore();
+  const {
+    status: authStatus,
+    pushBoardToCloud,
+    autoSaveEnabled,
+    autoSaving,
+    lastAutoSave,
+  } = useAuthStore();
 
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(documentTitle);
@@ -125,6 +131,58 @@ export function Header() {
       setBoardsOpen(false);
     }
   };
+
+  const autoSaveIndicator = (() => {
+    if (persistenceMode !== 'cloud') {
+      return {
+        icon: 'save',
+        label: 'Local',
+        meta: null as string | null,
+        title: 'Auto save em nuvem aparece quando o workspace estiver em modo cloud.',
+        tone: 'muted' as const,
+      };
+    }
+
+    if (authStatus !== 'authenticated') {
+      return {
+        icon: 'cloud_off',
+        label: 'Auto save indisponivel',
+        meta: null as string | null,
+        title: 'Entre na nuvem para habilitar o auto save.',
+        tone: 'muted' as const,
+      };
+    }
+
+    if (autoSaving) {
+      return {
+        icon: 'sync',
+        label: 'Auto save salvando',
+        meta: null as string | null,
+        title: 'Salvando automaticamente na nuvem agora.',
+        tone: 'active' as const,
+      };
+    }
+
+    if (autoSaveEnabled) {
+      return {
+        icon: 'cloud_done',
+        label: 'Auto save ligado',
+        meta: lastAutoSave ? formatAutoSaveTime(lastAutoSave) : null,
+        title: lastAutoSave
+          ? `Auto save ligado. Ultimo salvamento as ${formatAutoSaveTime(lastAutoSave)}.`
+          : 'Auto save ligado. Ainda aguardando o primeiro ciclo de salvamento.',
+        tone: 'on' as const,
+      };
+    }
+
+    return {
+      icon: 'cloud_off',
+      label: 'Auto save desligado',
+      meta: null as string | null,
+      title: 'Auto save em nuvem esta desligado. Clique para abrir Boards e alterar.',
+      tone: 'off' as const,
+    };
+  })();
 
   return (
     <header
@@ -282,6 +340,16 @@ export function Header() {
         />
 
         <Divider />
+
+        <AutoSaveBadge
+          icon={autoSaveIndicator.icon}
+          label={autoSaveIndicator.label}
+          meta={autoSaveIndicator.meta}
+          tone={autoSaveIndicator.tone}
+          spinning={autoSaving}
+          title={autoSaveIndicator.title}
+          onClick={() => setBoardsOpen(true)}
+        />
 
         <ActionBtn
           icon="save"
@@ -1082,4 +1150,112 @@ function ActionBtn({
       {children}
     </button>
   );
+}
+
+function AutoSaveBadge({
+  icon,
+  label,
+  meta,
+  tone,
+  spinning,
+  title,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  meta?: string | null;
+  tone: 'on' | 'off' | 'active' | 'muted';
+  spinning?: boolean;
+  title?: string;
+  onClick?: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+
+  const palette = {
+    on: {
+      border: 'color-mix(in srgb, #16a34a 28%, var(--glass-border))',
+      background: hover ? 'color-mix(in srgb, #16a34a 12%, var(--glass-bg))' : 'color-mix(in srgb, #16a34a 8%, var(--glass-bg))',
+      color: '#166534',
+      dot: '#16a34a',
+      meta: '#166534',
+    },
+    off: {
+      border: 'color-mix(in srgb, #ef4444 28%, var(--glass-border))',
+      background: hover ? 'color-mix(in srgb, #ef4444 10%, var(--glass-bg))' : 'color-mix(in srgb, #ef4444 6%, var(--glass-bg))',
+      color: '#991b1b',
+      dot: '#ef4444',
+      meta: '#991b1b',
+    },
+    active: {
+      border: 'color-mix(in srgb, var(--primary) 34%, var(--glass-border))',
+      background: hover ? 'color-mix(in srgb, var(--primary) 16%, var(--glass-bg))' : 'color-mix(in srgb, var(--primary) 11%, var(--glass-bg))',
+      color: 'var(--primary)',
+      dot: 'var(--primary)',
+      meta: 'var(--primary)',
+    },
+    muted: {
+      border: '1px solid var(--glass-border)',
+      background: hover ? 'color-mix(in srgb, var(--glass-bg) 82%, white)' : 'var(--glass-bg)',
+      color: 'var(--text-secondary)',
+      dot: 'var(--text-muted)',
+      meta: 'var(--text-muted)',
+    },
+  }[tone];
+
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: '6px 10px',
+        borderRadius: 999,
+        border: palette.border,
+        background: palette.background,
+        color: palette.color,
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+        transition: 'all 0.16s ease',
+        flexShrink: 0,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: palette.dot,
+          boxShadow: tone === 'on' || tone === 'active' ? `0 0 0 4px color-mix(in srgb, ${palette.dot} 16%, transparent)` : 'none',
+          flexShrink: 0,
+        }}
+      />
+      <Icon name={icon} size={15} className={spinning ? 'spin' : undefined} />
+      <span>{label}</span>
+      {meta ? (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: palette.meta,
+            opacity: 0.82,
+          }}
+        >
+          {meta}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function formatAutoSaveTime(value: string) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
