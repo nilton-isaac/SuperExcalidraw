@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ShapeElement as ShapeEl } from '../../types';
 import { useStore } from '../../store/useStore';
@@ -42,6 +42,24 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
     });
   };
 
+  const startEditing = useCallback((event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    event?.preventDefault();
+    setEditing(true);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      if (!editing && event.detail >= 2) {
+        event.stopPropagation();
+        return;
+      }
+      onPointerDown(event);
+    },
+    [editing, onPointerDown]
+  );
+
   const shapeStyle: CSSProperties = {
     position: 'absolute',
     left: element.x,
@@ -51,8 +69,8 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    cursor: 'move',
-    userSelect: 'none',
+    cursor: editing ? 'text' : 'move',
+    userSelect: editing ? 'text' : 'none',
     zIndex: element.zIndex,
     transform: `rotate(${element.rotation ?? 0}deg)`,
     transformOrigin: 'center center',
@@ -79,20 +97,15 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   };
 
   return (
-    <div style={shapeStyle} onPointerDown={onPointerDown}>
-      <div
-        style={innerStyle}
-        onDoubleClick={() => {
-          setEditing(true);
-          setTimeout(() => inputRef.current?.focus(), 0);
-        }}
-      >
+    <div style={shapeStyle} onPointerDown={handlePointerDown} onDoubleClick={startEditing}>
+      <div style={innerStyle}>
         {editing ? (
           <textarea
             ref={inputRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             onBlur={commitText}
+            onPointerDown={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === 'Escape') commitText();
             }}

@@ -39,6 +39,23 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
     }
   }, [editing, autoResize]);
 
+  const startEditing = useCallback((event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    event?.preventDefault();
+    setEditing(true);
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      if (event.detail >= 2) {
+        event.stopPropagation();
+        return;
+      }
+      onPointerDown(event);
+    },
+    [onPointerDown]
+  );
+
   const commit = () => setEditing(false);
 
   return (
@@ -48,9 +65,9 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
         left: element.x,
         top: element.y,
         width: element.width,
-        minHeight: element.height,
-        cursor: 'move',
-        userSelect: 'none',
+        height: element.height,
+        cursor: editing ? 'text' : 'move',
+        userSelect: editing ? 'text' : 'none',
         zIndex: element.zIndex,
         outline: selected ? '2px solid var(--primary)' : undefined,
         outlineOffset: 4,
@@ -58,8 +75,8 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
         transform: `rotate(${element.rotation ?? 0}deg)`,
         transformOrigin: 'center center',
       }}
-      onPointerDown={onPointerDown}
-      onDoubleClick={() => setEditing(true)}
+      onPointerDown={handlePointerDown}
+      onDoubleClick={startEditing}
     >
       {editing ? (
         <textarea
@@ -95,6 +112,9 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
       ) : (
         <div
           style={{
+            width: '100%',
+            minHeight: '100%',
+            boxSizing: 'border-box',
             fontSize: element.properties.fontSize,
             fontWeight,
             color,
@@ -104,6 +124,7 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
             wordBreak: 'break-word',
             padding: 2,
             textAlign,
+            cursor: 'text',
           }}
         >
           {element.properties.text || (
