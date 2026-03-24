@@ -196,6 +196,37 @@ export function Whiteboard() {
     paintPointerGlow(0, 0, false);
   }, [paintPointerGlow]);
 
+  const moveSelectedElements = useCallback(
+    (dx: number, dy: number) => {
+      if (dx === 0 && dy === 0) return;
+
+      const state = useStore.getState();
+      const draggableElements = state.elements.filter(
+        (candidate) => state.selectedIds.includes(candidate.id) && !candidate.locked
+      );
+
+      if (draggableElements.length === 0) return;
+
+      historyPush();
+      const movedElements = draggableElements.map((candidate) => ({
+        ...candidate,
+        x: candidate.x + dx,
+        y: candidate.y + dy,
+      }));
+      const movedUpdates = movedElements.map((candidate) => ({
+        id: candidate.id,
+        updates: {
+          x: candidate.x,
+          y: candidate.y,
+        },
+      }));
+      const arrowUpdates = computeConnectedArrowUpdates(state.elements, movedElements);
+
+      updateElements([...movedUpdates, ...arrowUpdates]);
+    },
+    [historyPush, updateElements]
+  );
+
   const startCapturedDrag = useCallback((
     captureTarget: HTMLElement | null,
     pointerId: number,
@@ -334,6 +365,16 @@ export function Whiteboard() {
         return;
       }
 
+      if (selectedIds.length > 0 && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 1;
+        if (event.key === 'ArrowLeft') moveSelectedElements(-step, 0);
+        if (event.key === 'ArrowRight') moveSelectedElements(step, 0);
+        if (event.key === 'ArrowUp') moveSelectedElements(0, -step);
+        if (event.key === 'ArrowDown') moveSelectedElements(0, step);
+        return;
+      }
+
       if (event.key === 'l' || event.key === 'L') selectedIds.forEach((id) => toggleLock(id));
       if (event.key === 'v' || event.key === 'V') setActiveTool('select');
       if (event.key === 'h' || event.key === 'H') setActiveTool('hand');
@@ -369,11 +410,12 @@ export function Whiteboard() {
     duplicateElement,
     setActiveTool,
     copySelected,
-        groupSelected,
-        ungroupSelected,
-        toggleLock,
-        undo,
-        redo,
+    groupSelected,
+    ungroupSelected,
+    toggleLock,
+    moveSelectedElements,
+    undo,
+    redo,
   ]);
 
   useEffect(() => {

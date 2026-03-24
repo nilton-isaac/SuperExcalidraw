@@ -16,7 +16,6 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(element.properties.text ?? '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const lastPointerDownRef = useRef<{ time: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     setText(element.properties.text ?? '');
@@ -48,30 +47,15 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent) => {
-      const lastPointerDown = lastPointerDownRef.current;
-      const isManualDoubleClick =
-        !!lastPointerDown &&
-        event.timeStamp - lastPointerDown.time <= 320 &&
-        Math.hypot(event.clientX - lastPointerDown.x, event.clientY - lastPointerDown.y) <= 8;
-
-      if (!editing && (event.detail >= 2 || isManualDoubleClick)) {
-        lastPointerDownRef.current = null;
-        event.preventDefault();
-        event.stopPropagation();
-        startEditing();
-        return;
-      }
-
-      lastPointerDownRef.current = {
-        time: event.timeStamp,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      onPointerDown(event);
+  const handlePointerDown = useCallback((event: React.PointerEvent) => onPointerDown(event), [onPointerDown]);
+  const handleClick = useCallback(
+    (event: React.MouseEvent) => {
+      if (editing || event.detail < 2) return;
+      event.preventDefault();
+      event.stopPropagation();
+      startEditing();
     },
-    [editing, onPointerDown, startEditing]
+    [editing, startEditing]
   );
 
   const shapeStyle: CSSProperties = {
@@ -111,7 +95,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   };
 
   return (
-    <div style={shapeStyle} onPointerDown={handlePointerDown}>
+    <div style={shapeStyle} onPointerDown={handlePointerDown} onClick={handleClick}>
       <div style={innerStyle}>
         {editing ? (
           <textarea

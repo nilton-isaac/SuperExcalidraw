@@ -65,6 +65,49 @@ export function insertArrowMidPoint(
   ];
 }
 
+export function snapArrowHandlePoint(
+  points: Point[],
+  pointIndex: number,
+  movedPoint: Point,
+  lineStyle?: ArrowLineStyle,
+) {
+  if (lineStyle !== 'orthogonal' || points.length < 2) {
+    return movedPoint;
+  }
+
+  const previousPoint = points[pointIndex - 1];
+  const nextPoint = points[pointIndex + 1];
+
+  if (previousPoint && nextPoint) {
+    const previousAngle = getSnappedAngle(previousPoint, movedPoint);
+    const nextAngle = getSnappedAngle(nextPoint, movedPoint);
+    const candidates = [
+      projectPointAtAngle(previousPoint, movedPoint, previousAngle),
+      projectPointAtAngle(nextPoint, movedPoint, nextAngle),
+    ];
+    const intersection = getLineIntersection(previousPoint, previousAngle, nextPoint, nextAngle);
+    if (intersection) {
+      candidates.push(intersection);
+    }
+
+    return candidates.reduce((bestCandidate, candidate) =>
+      getDistance(candidate, movedPoint) < getDistance(bestCandidate, movedPoint)
+        ? candidate
+        : bestCandidate
+    );
+  }
+
+  if (previousPoint) {
+    return projectPointAtAngle(previousPoint, movedPoint, getSnappedAngle(previousPoint, movedPoint));
+  }
+
+  if (nextPoint) {
+    return projectPointAtAngle(nextPoint, movedPoint, getSnappedAngle(nextPoint, movedPoint));
+  }
+
+  return movedPoint;
+}
+
 function createOrthogonalPoints(start: Point, end: Point) {
   const horizontalDominant = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
 
@@ -111,6 +154,47 @@ function buildSmoothPath(points: Point[]) {
   path += ` Q ${secondLast.x} ${secondLast.y} ${last.x} ${last.y}`;
 
   return path;
+}
+
+function getSnappedAngle(origin: Point, target: Point) {
+  const angle = Math.atan2(target.y - origin.y, target.x - origin.x);
+  return snapAngle(angle);
+}
+
+function snapAngle(angle: number) {
+  const step = Math.PI / 4;
+  return Math.round(angle / step) * step;
+}
+
+function projectPointAtAngle(origin: Point, target: Point, angle: number) {
+  const distance = getDistance(origin, target);
+  return {
+    x: origin.x + Math.cos(angle) * distance,
+    y: origin.y + Math.sin(angle) * distance,
+  };
+}
+
+function getLineIntersection(originA: Point, angleA: number, originB: Point, angleB: number) {
+  const directionA = { x: Math.cos(angleA), y: Math.sin(angleA) };
+  const directionB = { x: Math.cos(angleB), y: Math.sin(angleB) };
+  const determinant = directionA.x * directionB.y - directionA.y * directionB.x;
+
+  if (Math.abs(determinant) < 0.0001) {
+    return null;
+  }
+
+  const deltaX = originB.x - originA.x;
+  const deltaY = originB.y - originA.y;
+  const t = (deltaX * directionB.y - deltaY * directionB.x) / determinant;
+
+  return {
+    x: originA.x + directionA.x * t,
+    y: originA.y + directionA.y * t,
+  };
+}
+
+function getDistance(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 export function getArrowBounds(

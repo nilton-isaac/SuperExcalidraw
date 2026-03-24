@@ -14,7 +14,6 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
   const { updateElement } = useStore();
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const lastPointerDownRef = useRef<{ time: number; x: number; y: number } | null>(null);
 
   const fontFamily = element.properties.fontFamily ?? 'Inter';
   const fontWeight = element.properties.fontWeight ?? 'normal';
@@ -44,30 +43,15 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
     setEditing(true);
   }, []);
 
-  const handlePointerDown = useCallback(
-    (event: React.PointerEvent) => {
-      const lastPointerDown = lastPointerDownRef.current;
-      const isManualDoubleClick =
-        !!lastPointerDown &&
-        event.timeStamp - lastPointerDown.time <= 320 &&
-        Math.hypot(event.clientX - lastPointerDown.x, event.clientY - lastPointerDown.y) <= 8;
-
-      if (event.detail >= 2 || isManualDoubleClick) {
-        lastPointerDownRef.current = null;
-        event.preventDefault();
-        event.stopPropagation();
-        startEditing();
-        return;
-      }
-
-      lastPointerDownRef.current = {
-        time: event.timeStamp,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      onPointerDown(event);
+  const handlePointerDown = useCallback((event: React.PointerEvent) => onPointerDown(event), [onPointerDown]);
+  const handleClick = useCallback(
+    (event: React.MouseEvent) => {
+      if (editing || event.detail < 2) return;
+      event.preventDefault();
+      event.stopPropagation();
+      startEditing();
     },
-    [onPointerDown, startEditing]
+    [editing, startEditing]
   );
 
   const commit = () => setEditing(false);
@@ -90,6 +74,7 @@ export function TextElementComponent({ element, selected, zoom = 1, onPointerDow
         transformOrigin: 'center center',
       }}
       onPointerDown={handlePointerDown}
+      onClick={handleClick}
     >
       {editing ? (
         <textarea

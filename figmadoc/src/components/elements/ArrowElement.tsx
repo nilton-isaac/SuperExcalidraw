@@ -1,4 +1,4 @@
-import { buildArrowPathDefinition, getArrowRenderablePoints, insertArrowMidPoint } from '../../lib/arrows';
+import { buildArrowPathDefinition, getArrowRenderablePoints, insertArrowMidPoint, snapArrowHandlePoint } from '../../lib/arrows';
 import { useStore } from '../../store/useStore';
 import type { ArrowElement as ArrowEl, ArrowHead, Point } from '../../types';
 
@@ -135,9 +135,10 @@ export function ArrowElementComponent({ element, selected, zoom, onPointerDown }
       const dx = (moveEvent.clientX - startX) / zoom;
       const dy = (moveEvent.clientY - startY) / zoom;
       const movedPoint = { x: initialPoint.x + dx, y: initialPoint.y + dy };
+      const snappedHandlePoint = snapArrowHandlePoint(basePoints, pointIndex, movedPoint, lineStyle);
       const snapTarget = isStart || isEnd
         ? getSnapTarget(
-            movedPoint,
+            snappedHandlePoint,
             elements.filter((candidate) => candidate.id !== element.id),
           )
         : null;
@@ -145,7 +146,7 @@ export function ArrowElementComponent({ element, selected, zoom, onPointerDown }
       updatePoints(
         basePoints.map((point, index) =>
           index === pointIndex
-            ? (snapTarget?.snappedPoint ?? movedPoint)
+            ? (snapTarget?.snappedPoint ?? snappedHandlePoint)
             : point
         ),
         isStart || isEnd
