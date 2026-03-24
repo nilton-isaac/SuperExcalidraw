@@ -1,23 +1,27 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { WhiteboardElement } from '../types';
 
-export const FIGMADOC_CLIPBOARD_PREFIX = 'FIGMADOC_CLIPBOARD::';
+export const SYNTH_CLIPBOARD_PREFIX = 'SYNTH_CLIPBOARD::';
+const LEGACY_CLIPBOARD_PREFIXES = ['FIGMADOC_CLIPBOARD::'];
 
 export function cloneData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
 export function serializeElementsForClipboard(elements: WhiteboardElement[]) {
-  return `${FIGMADOC_CLIPBOARD_PREFIX}${JSON.stringify(cloneData(elements))}`;
+  return `${SYNTH_CLIPBOARD_PREFIX}${JSON.stringify(cloneData(elements))}`;
 }
 
 export function parseElementsFromClipboard(value: string) {
-  if (!value.startsWith(FIGMADOC_CLIPBOARD_PREFIX)) {
+  const matchedPrefix = [SYNTH_CLIPBOARD_PREFIX, ...LEGACY_CLIPBOARD_PREFIXES]
+    .find((prefix) => value.startsWith(prefix));
+
+  if (!matchedPrefix) {
     return null;
   }
 
   try {
-    return JSON.parse(value.slice(FIGMADOC_CLIPBOARD_PREFIX.length)) as WhiteboardElement[];
+    return JSON.parse(value.slice(matchedPrefix.length)) as WhiteboardElement[];
   } catch {
     return null;
   }

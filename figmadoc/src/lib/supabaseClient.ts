@@ -6,7 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!isSupabaseConfigured) {
-  console.warn('[SuperExcalidraw] Variáveis VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY não configuradas. Recursos de nuvem desativados.');
+  console.warn('[Synth] Supabase environment variables are missing. Cloud features are disabled.');
 }
 
 export const supabase = createClient(

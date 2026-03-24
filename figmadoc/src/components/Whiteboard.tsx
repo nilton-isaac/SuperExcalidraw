@@ -120,6 +120,7 @@ export function Whiteboard() {
   const lastPointerCanvasRef = useRef<Point | null>(null);
   const erasedIdsRef = useRef<Set<string>>(new Set());
   const pointerGlowRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
 
   const toCanvas = useCallback(
     (screenX: number, screenY: number): Point => {
@@ -178,6 +179,82 @@ export function Whiteboard() {
       });
     }
   }, [activeTool, setActiveTool]);
+
+  const resetTransientPointerState = useCallback(() => {
+    dragCleanupRef.current?.();
+    dragCleanupRef.current = null;
+    panStart.current = null;
+    erasedIdsRef.current.clear();
+    setIsPanning(false);
+    setIsErasing(false);
+    setSelectionBox(null);
+    setPanelDraft(null);
+    setDrawingShape(null);
+    setDrawingArrow(null);
+    setPenPoints(null);
+    setAlignmentGuides([]);
+    paintPointerGlow(0, 0, false);
+  }, [paintPointerGlow]);
+
+  const startCapturedDrag = useCallback((
+    captureTarget: HTMLElement | null,
+    pointerId: number,
+    onMove: (event: PointerEvent) => void,
+    onEnd: () => void,
+  ) => {
+    dragCleanupRef.current?.();
+
+    let completed = false;
+
+    const cleanup = () => {
+      if (completed) return;
+      completed = true;
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleFinish);
+      window.removeEventListener('pointercancel', handleFinish);
+      window.removeEventListener('blur', handleFinish);
+      captureTarget?.removeEventListener('lostpointercapture', handleFinish);
+      if (captureTarget?.hasPointerCapture(pointerId)) {
+        captureTarget.releasePointerCapture(pointerId);
+      }
+      dragCleanupRef.current = null;
+      onEnd();
+    };
+
+    const handleMove = (event: PointerEvent) => {
+      onMove(event);
+    };
+    const handleFinish = () => {
+      cleanup();
+    };
+
+    if (captureTarget) {
+      try {
+        captureTarget.setPointerCapture(pointerId);
+      } catch {
+        // Pointer capture may fail when the pointer is already inactive.
+      }
+      captureTarget.addEventListener('lostpointercapture', handleFinish);
+    }
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleFinish);
+    window.addEventListener('pointercancel', handleFinish);
+    window.addEventListener('blur', handleFinish);
+
+    dragCleanupRef.current = cleanup;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('blur', resetTransientPointerState);
+    return () => window.removeEventListener('blur', resetTransientPointerState);
+  }, [resetTransientPointerState]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -451,7 +528,6 @@ export function Whiteboard() {
               // Start drag of selected elements instead of selection box
               const draggableElements = selectedElements.filter((e) => !e.locked);
               if (draggableElements.length > 0) {
-                historyPush();
                 const startX = event.clientX;
                 const startY = event.clientY;
                 const staticElements = state.elements.filter((e) => !selectedIds.includes(e.id));
@@ -461,17 +537,27 @@ export function Whiteboard() {
                 const selectionBounds = getCombinedBounds(draggableElements);
                 let frame = 0;
                 let lastEvent: PointerEvent | null = null;
-
-                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+                let didDrag = false;
+                const captureTarget = wrapperRef.current ?? (event.currentTarget as HTMLElement);
 
                 const onMove = (nextEvent: PointerEvent) => {
                   lastEvent = nextEvent;
                   if (frame) return;
                   frame = window.requestAnimationFrame(() => {
                     if (!lastEvent) { frame = 0; return; }
+                    const clientDx = lastEvent.clientX - startX;
+                    const clientDy = lastEvent.clientY - startY;
+                    if (!didDrag && Math.hypot(clientDx, clientDy) < 4) {
+                      frame = 0;
+                      return;
+                    }
+                    if (!didDrag) {
+                      historyPush();
+                      didDrag = true;
+                    }
                     const currentViewState = useStore.getState().viewState;
-                    const dx = (lastEvent.clientX - startX) / currentViewState.zoom;
-                    const dy = (lastEvent.clientY - startY) / currentViewState.zoom;
+                    const dx = clientDx / currentViewState.zoom;
+                    const dy = clientDy / currentViewState.zoom;
                     const alignment = getAlignmentResult(selectionBounds, staticElements, dx, dy, 6 / currentViewState.zoom);
                     const movedUpdates = draggableElements.map((e) => {
                       const initial = startPositions.get(e.id)!;
@@ -502,13 +588,10 @@ export function Whiteboard() {
 
                 const onUp = () => {
                   if (frame) window.cancelAnimationFrame(frame);
-                  window.removeEventListener('pointermove', onMove);
-                  window.removeEventListener('pointerup', onUp);
                   setAlignmentGuides([]);
                 };
 
-                window.addEventListener('pointermove', onMove);
-                window.addEventListener('pointerup', onUp);
+                startCapturedDrag(captureTarget, event.pointerId, onMove, onUp);
                 return;
               }
             }
@@ -659,7 +742,7 @@ export function Whiteboard() {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
       }
     },
-    [activeTool, eraseAtPoint, finishSingleUseTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, toolDefaults, historyPush, updateElements, selectedIds, elements, viewState]
+    [activeTool, eraseAtPoint, finishSingleUseTool, isPanMode, toCanvas, addElement, selectElement, clearSelection, toolDefaults, historyPush, updateElements, selectedIds, elements, startCapturedDrag, viewState]
   );
 
   const onCanvasPointerMove = useCallback(
@@ -963,7 +1046,6 @@ export function Whiteboard() {
       );
       if (draggableElements.length === 0) return;
 
-      historyPush();
       const startX = event.clientX;
       const startY = event.clientY;
       const staticElements = state.elements.filter((candidate) => !dragIds.includes(candidate.id));
@@ -973,8 +1055,8 @@ export function Whiteboard() {
       const selectionBounds = getCombinedBounds(draggableElements);
       let frame = 0;
       let lastEvent: PointerEvent | null = null;
-
-      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      let didDrag = false;
+      const captureTarget = wrapperRef.current ?? (event.currentTarget as HTMLElement);
 
       const onMove = (nextEvent: PointerEvent) => {
         lastEvent = nextEvent;
@@ -985,9 +1067,20 @@ export function Whiteboard() {
             return;
           }
 
+          const clientDx = lastEvent.clientX - startX;
+          const clientDy = lastEvent.clientY - startY;
+          if (!didDrag && Math.hypot(clientDx, clientDy) < 4) {
+            frame = 0;
+            return;
+          }
+          if (!didDrag) {
+            historyPush();
+            didDrag = true;
+          }
+
           const currentViewState = useStore.getState().viewState;
-          const dx = (lastEvent.clientX - startX) / currentViewState.zoom;
-          const dy = (lastEvent.clientY - startY) / currentViewState.zoom;
+          const dx = clientDx / currentViewState.zoom;
+          const dy = clientDy / currentViewState.zoom;
           const alignment = getAlignmentResult(selectionBounds, staticElements, dx, dy, 6 / currentViewState.zoom);
           const movedUpdates = draggableElements.map((candidate) => {
             const initial = startPositions.get(candidate.id)!;
@@ -1020,15 +1113,12 @@ export function Whiteboard() {
         if (frame) {
           window.cancelAnimationFrame(frame);
         }
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
         setAlignmentGuides([]);
       };
 
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      startCapturedDrag(captureTarget, event.pointerId, onMove, onUp);
     },
-    [activeTool, eraseAtPoint, historyPush, selectElement, setSelectedIds, toCanvas, updateElements]
+    [activeTool, eraseAtPoint, historyPush, selectElement, setSelectedIds, startCapturedDrag, toCanvas, updateElements]
   );
 
   const onElementContextMenu = useCallback(
@@ -1097,6 +1187,8 @@ export function Whiteboard() {
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onCanvasPointerMove}
         onPointerUp={onCanvasPointerUp}
+        onPointerCancel={resetTransientPointerState}
+        onLostPointerCapture={resetTransientPointerState}
         onDoubleClick={onCanvasDoubleClick}
         onPointerLeave={() => paintPointerGlow(0, 0, false)}
         onContextMenu={(event) => event.preventDefault()}
@@ -1260,7 +1352,6 @@ export function Whiteboard() {
           {sortedElements.map((element) => {
             const isSelected = selectedIds.includes(element.id);
             const sharedProps = {
-              key: element.id,
               selected: isSelected,
               zoom: viewState.zoom,
               onPointerDown: (event: React.PointerEvent) => onElementPointerDown(event, element),
@@ -1295,12 +1386,12 @@ export function Whiteboard() {
               </div>
             );
 
-            if (element.type === 'shape') return wrapped(<ShapeElementComponent element={element} {...sharedProps} />);
-            if (element.type === 'sticky') return wrapped(<StickyElementComponent element={element} {...sharedProps} />);
-            if (element.type === 'code') return wrapped(<CodeBlockElement element={element} {...sharedProps} />);
-            if (element.type === 'image') return wrapped(<ImageElementComponent element={element} {...sharedProps} />);
-            if (element.type === 'chart') return wrapped(<ChartElementComponent element={element} {...sharedProps} />);
-            if (element.type === 'table') return wrapped(<TableElementComponent element={element} {...sharedProps} />);
+            if (element.type === 'shape') return wrapped(<ShapeElementComponent key={element.id} element={element} {...sharedProps} />);
+            if (element.type === 'sticky') return wrapped(<StickyElementComponent key={element.id} element={element} {...sharedProps} />);
+            if (element.type === 'code') return wrapped(<CodeBlockElement key={element.id} element={element} {...sharedProps} />);
+            if (element.type === 'image') return wrapped(<ImageElementComponent key={element.id} element={element} {...sharedProps} />);
+            if (element.type === 'chart') return wrapped(<ChartElementComponent key={element.id} element={element} {...sharedProps} />);
+            if (element.type === 'table') return wrapped(<TableElementComponent key={element.id} element={element} {...sharedProps} />);
             if (element.type === 'text') {
               return wrapped(
                 <TextElementComponent

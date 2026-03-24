@@ -7,31 +7,66 @@ import { Whiteboard } from './components/Whiteboard';
 import './index.css';
 
 export default function App() {
-  const { theme, layoutMode, splitRatio, panelMode, setSplitRatio } = useStore();
+  const {
+    theme,
+    layoutMode,
+    splitRatio,
+    panelMode,
+    persistenceMode,
+    activeCloudBoardId,
+    restorePersistenceMode,
+    loadBoardFromSnapshot,
+    setSplitRatio,
+  } = useStore();
   const initialize = useAuthStore((s) => s.initialize);
-  const { autoSaveEnabled, autoSaveIntervalSeconds, status: authStatus, runAutoSave } = useAuthStore();
+  const {
+    autoSaveEnabled,
+    autoSaveIntervalSeconds,
+    status: authStatus,
+    runAutoSave,
+    pullBoardFromCloud,
+  } = useAuthStore();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
 
+  useEffect(() => {
+    restorePersistenceMode();
+  }, [restorePersistenceMode]);
+
   // Autosave para nuvem
   useEffect(() => {
-    if (!autoSaveEnabled || authStatus !== 'authenticated') return;
+    if (persistenceMode !== 'cloud' || !autoSaveEnabled || authStatus !== 'authenticated') return;
     const interval = setInterval(() => {
-      const state = useStore.getState();
-      const { activeBoardId, savedBoards, elements, pages, activePageId, documentTitle, theme, layoutMode, splitRatio, panelMode, docsNavigatorCollapsed, viewState } = state;
-      const name = savedBoards.find((b) => b.id === activeBoardId)?.name ?? documentTitle;
-      const id = activeBoardId ?? `unsaved-${Date.now()}`;
-      runAutoSave({
-        id,
-        name,
-        updatedAt: new Date().toISOString(),
-        snapshot: { elements, pages, activePageId, documentTitle, theme, layoutMode, splitRatio, panelMode, docsNavigatorCollapsed, viewState },
-      });
+      const board = useStore.getState().getCurrentBoardRecord();
+      runAutoSave(board);
     }, autoSaveIntervalSeconds * 1000);
     return () => clearInterval(interval);
-  }, [autoSaveEnabled, autoSaveIntervalSeconds, authStatus, runAutoSave]);
+  }, [persistenceMode, autoSaveEnabled, autoSaveIntervalSeconds, authStatus, runAutoSave]);
+
+  useEffect(() => {
+    if (persistenceMode !== 'cloud' || authStatus !== 'authenticated' || !activeCloudBoardId) return;
+
+    let cancelled = false;
+
+    pullBoardFromCloud(activeCloudBoardId)
+      .then(({ snapshot, name, localId }) => {
+        if (cancelled) return;
+        loadBoardFromSnapshot(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          snapshot as any,
+          { id: localId, name, cloudId: activeCloudBoardId, saveLocally: false }
+        );
+      })
+      .catch(() => {
+        // cloud error handled in auth store
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [persistenceMode, authStatus, activeCloudBoardId, pullBoardFromCloud, loadBoardFromSnapshot]);
 
   // Apply theme to <html>
   useEffect(() => {
@@ -70,36 +105,54 @@ export default function App() {
 
   const sidebarSize = `${(splitRatio * 100).toFixed(1)}%`;
   const whiteboardSize = `${((1 - splitRatio) * 100).toFixed(1)}%`;
-  const showDocs = panelMode !== 'whiteboard-only';
-  const showWhiteboard = panelMode !== 'docs-only';
-  const showSplitHandle = showDocs && showWhiteboard;
+  const showSplitHandle = panelMode === 'split';
+  const hiddenPanelStyle = {
+    flex: '0 1 0',
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
+    pointerEvents: 'none' as const,
+    opacity: 0,
+    visibility: 'hidden' as const,
+    [isH ? 'width' : 'height']: 0,
+  };
 
-  const docsPanelStyle = showSplitHandle
+  const docsPanelStyle = panelMode === 'split'
     ? {
         [isH ? 'width' : 'height']: sidebarSize,
         flexShrink: 0,
-      }
-    : {
-        flex: 1,
         minWidth: 0,
         minHeight: 0,
-      };
+      }
+    : panelMode === 'docs-only'
+      ? {
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+        }
+      : hiddenPanelStyle;
 
-  const whiteboardPanelStyle = showSplitHandle
+  const whiteboardPanelStyle = panelMode === 'split'
     ? {
         [isH ? 'width' : 'height']: whiteboardSize,
         flex: 1,
+        minWidth: 0,
+        minHeight: 0,
       }
-    : {
-        flex: 1,
-      };
+    : panelMode === 'whiteboard-only'
+      ? {
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+        }
+      : hiddenPanelStyle;
 
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
+        height: '100dvh',
         overflow: 'hidden',
         background: 'var(--bg-secondary)',
         color: 'var(--text-primary)',
@@ -118,18 +171,16 @@ export default function App() {
           minHeight: 0,
         }}
       >
-        {showDocs && (
-          <div
-            style={{
-              ...docsPanelStyle,
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <Sidebar />
-          </div>
-        )}
+        <div
+          style={{
+            ...docsPanelStyle,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <Sidebar />
+        </div>
 
         {showSplitHandle && (
           <div
@@ -153,20 +204,18 @@ export default function App() {
           />
         )}
 
-        {showWhiteboard && (
-          <div
-            style={{
-              ...whiteboardPanelStyle,
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-              minWidth: 0,
-              minHeight: 0,
-            }}
-          >
-            <Whiteboard />
-          </div>
-        )}
+        <div
+          style={{
+            ...whiteboardPanelStyle,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+            minHeight: 0,
+          }}
+        >
+          <Whiteboard />
+        </div>
       </div>
     </div>
   );

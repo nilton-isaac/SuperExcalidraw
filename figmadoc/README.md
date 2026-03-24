@@ -1,4 +1,4 @@
-# Sketch Docs
+# Synth
 
 Whiteboard + documentation workspace built with React, TypeScript and Vite.
 

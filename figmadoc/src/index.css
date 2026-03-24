@@ -3,12 +3,18 @@
 @import "tailwindcss";
 
 :root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
   --primary: #111827;
   --primary-contrast: #f8fbff;
   --bg-primary: rgba(255, 255, 255, 0.68);
   --bg-secondary: #eef3fb;
   --bg-tertiary: rgba(15, 23, 42, 0.06);
   --bg-elevated: rgba(255, 255, 255, 0.86);
+  --surface-elevated: rgba(255, 255, 255, 0.76);
+  --surface-floating: rgba(255, 255, 255, 0.92);
   --text-primary: #0f172a;
   --text-secondary: rgba(15, 23, 42, 0.74);
   --text-muted: rgba(15, 23, 42, 0.46);
@@ -61,6 +67,8 @@
   --bg-secondary: #030712;
   --bg-tertiary: rgba(255, 255, 255, 0.06);
   --bg-elevated: rgba(8, 15, 28, 0.88);
+  --surface-elevated: rgba(10, 18, 32, 0.82);
+  --surface-floating: rgba(15, 23, 42, 0.94);
   --text-primary: #f8fafc;
   --text-secondary: rgba(226, 232, 240, 0.82);
   --text-muted: rgba(148, 163, 184, 0.72);
@@ -122,6 +130,7 @@ html,
 body,
 #root {
   height: 100%;
+  min-height: 100dvh;
   overflow: hidden;
 }
 

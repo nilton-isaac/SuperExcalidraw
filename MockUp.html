@@ -17,7 +17,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sketch Docs - Whiteboard + Documentation</title>
+    <title>Synth - Whiteboard + Documentation</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -88,15 +88,19 @@
         }
 
         .logo-icon {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, var(--primary), #8b5cf6);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 16px;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            overflow: hidden;
+            flex-shrink: 0;
+            box-shadow: 0 10px 24px rgba(79, 70, 229, 0.2);
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
         .collaborators {
@@ -1005,8 +1009,8 @@
     <header class="header">
         <div class="header-left">
             <div class="logo">
-                <div class="logo-icon">📐</div>
-                <span>Sketch Docs</span>
+                <div class="logo-icon"><img src="./hd_restoration_result_image.png" alt="Synth logo"></div>
+                <span>Synth</span>
             </div>
             <div class="collaborators">
                 <div class="online-status">
@@ -1072,10 +1076,10 @@
 
                 <div class="doc-page fade-in">
                     <h1>Getting Started</h1>
-                    <p>Welcome to Sketch Docs! This is your all-in-one workspace for documentation and visual collaboration.</p>
+                    <p>Welcome to Synth! This is your all-in-one workspace for documentation and visual collaboration.</p>
                     
                     <h2>Overview</h2>
-                    <p>Sketch Docs combines the best of both worlds: structured documentation and freeform whiteboarding. Create beautiful docs on the left, and bring them to life with diagrams on the right.</p>
+                    <p>Synth combines the best of both worlds: structured documentation and freeform whiteboarding. Create beautiful docs on the left, and bring them to life with diagrams on the right.</p>
                     
                     <div class="callout">
                         <div class="callout-title">💡 Pro Tip</div>
@@ -1280,7 +1284,7 @@ State Management</textarea>
                     </div>
                     <div class="status-item">
                         <span>🔗</span>
-                        <span>figmadoc.app/project/demo</span>
+                        <span>synth.app/project/demo</span>
                     </div>
                 </div>
             </div>
@@ -1844,7 +1848,7 @@ State Management</textarea>
 
         // Initialize
         updateWelcomeScreen();
-        console.log('Sketch Docs initialized!');
+        console.log('Synth initialized!');
         console.log('Documentation: Check the sidebar for usage instructions');
         console.log('Shortcuts: V=Select, R=Rectangle, O=Circle, S=Sticky, C=Code, A=Arrow, T=Text');
     </script>

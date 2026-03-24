@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { JSONContent } from '@tiptap/core';
 import { EditorContent, type Editor, useEditor } from '@tiptap/react';
 import Color from '@tiptap/extension-color';
 import FontFamily from '@tiptap/extension-font-family';
@@ -25,6 +26,7 @@ import python from 'highlight.js/lib/languages/python';
 import sql from 'highlight.js/lib/languages/sql';
 import bash from 'highlight.js/lib/languages/bash';
 import yaml from 'highlight.js/lib/languages/yaml';
+import { DataChart } from '../extensions/DataChart';
 import { DataSheet } from '../extensions/DataSheet';
 import { createDefaultDataSheet, serializeDataSheet } from '../lib/dataSheet';
 import { useStore } from '../store/useStore';
@@ -245,7 +247,7 @@ export function Sidebar() {
             chromeCollapsed={docsEditorChromeCollapsed}
             onToggleChrome={toggleDocsEditorChromeCollapsed}
             onTitleChange={(title) => updatePage(activePage.id, { title })}
-            onUpdate={(content) => updatePage(activePage.id, { content })}
+            onUpdate={(content, contentJson) => updatePage(activePage.id, { content, contentJson })}
           />
         ) : (
           <div
@@ -374,40 +376,90 @@ function PageEditor({
   chromeCollapsed: boolean;
   onToggleChrome: () => void;
   onTitleChange: (title: string) => void;
-  onUpdate: (content: string) => void;
+  onUpdate: (content: string, contentJson: JSONContent) => void;
 }) {
+  const lastSerializedRef = useRef<{ html: string; json: string } | null>(null);
+  const editorExtensions = useMemo(() => [
+    StarterKit.configure({ codeBlock: false, link: false, underline: false }),
+    CodeBlockWithLabel.configure({ lowlight, defaultLanguage: 'plaintext' }),
+    TextStyle,
+    Color,
+    FontFamily,
+    Underline,
+    Highlight,
+    Link.configure({
+      openOnClick: false,
+      HTMLAttributes: {
+        rel: 'noopener noreferrer nofollow',
+        target: '_blank',
+      },
+    }),
+    Image.configure({
+      inline: false,
+      allowBase64: true,
+    }),
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
+    Typography,
+    DataChart,
+    DataSheet,
+    Placeholder.configure({ placeholder: 'Start writing...' }),
+  ], []);
+  const syncSerializedContent = useCallback((currentEditor: Editor | null) => {
+    if (!currentEditor) return;
+
+    const html = currentEditor.getHTML();
+    const json = currentEditor.getJSON();
+    const jsonKey = JSON.stringify(json);
+    if (lastSerializedRef.current?.html === html && lastSerializedRef.current?.json === jsonKey) {
+      return;
+    }
+
+    lastSerializedRef.current = { html, json: jsonKey };
+    queueMicrotask(() => onUpdate(html, json));
+  }, [onUpdate]);
+
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ codeBlock: false }),
-      CodeBlockWithLabel.configure({ lowlight, defaultLanguage: 'plaintext' }),
-      TextStyle,
-      Color,
-      FontFamily,
-      Underline,
-      Highlight,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          rel: 'noopener noreferrer nofollow',
-          target: '_blank',
-        },
-      }),
-      Image.configure({
-        inline: false,
-        allowBase64: true,
-      }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Typography,
-      DataSheet,
-      Placeholder.configure({ placeholder: 'Start writing...' }),
-    ],
-    content: page.content,
+    immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
+    extensions: editorExtensions,
+    content: page.contentJson ?? page.content,
     onUpdate: ({ editor: currentEditor }) => {
-      onUpdate(currentEditor.getHTML());
+      syncSerializedContent(currentEditor);
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const nextContent = page.contentJson ?? page.content;
+    const currentHtml = editor.getHTML();
+    const currentJsonKey = JSON.stringify(editor.getJSON());
+    const nextJsonKey = page.contentJson ? JSON.stringify(page.contentJson) : null;
+    const matches = nextJsonKey ? currentJsonKey === nextJsonKey : currentHtml === page.content;
+
+    if (matches) {
+      lastSerializedRef.current = {
+        html: currentHtml,
+        json: currentJsonKey,
+      };
+      return;
+    }
+
+    const syncTimer = window.setTimeout(() => {
+      if (editor.isDestroyed) return;
+      editor.commands.setContent(nextContent, { emitUpdate: false });
+      lastSerializedRef.current = {
+        html: editor.getHTML(),
+        json: JSON.stringify(editor.getJSON()),
+      };
+    }, 0);
+
+    return () => window.clearTimeout(syncTimer);
+  }, [editor, page.id, page.content, page.contentJson]);
+
+  useEffect(() => () => syncSerializedContent(editor), [editor, syncSerializedContent]);
 
   const tone = fullDocumentMode ? 'doc' : 'app';
   const shellBorder = fullDocumentMode ? 'var(--doc-border)' : 'var(--border-color)';
@@ -424,6 +476,18 @@ function PageEditor({
     : chromeCollapsed
       ? '10px 16px 24px'
       : '12px 16px 32px';
+
+  const focusEditorSurface = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      target.closest('[data-doc-interactive="true"], input, button, select, textarea, [contenteditable="false"]')
+    ) {
+      return;
+    }
+
+    editor?.commands.focus();
+  };
 
   return (
     <div
@@ -531,7 +595,7 @@ function PageEditor({
             minWidth: 0,
             background: fullDocumentMode ? 'var(--doc-canvas-bg)' : 'transparent',
           }}
-          onClick={() => editor?.commands.focus()}
+          onClick={focusEditorSurface}
       >
         {chromeCollapsed && (
           <div
@@ -586,27 +650,31 @@ function PageEditor({
           </div>
         )}
 
-        {fullDocumentMode ? (
-          <div
-            style={{
-              maxWidth: 1320,
-              margin: '0 auto',
-              display: 'grid',
-              gridTemplateColumns: showSideChrome ? '260px minmax(0, 1fr)' : 'minmax(0, 1fr)',
-              gap: 20,
-              alignItems: 'start',
-            }}
-          >
-            {showSideChrome && editor && (
-              <DocumentEditorRail
-                editor={editor}
-                page={page}
-                onToggleChrome={onToggleChrome}
-                onTitleChange={onTitleChange}
-              />
-            )}
+        <div
+          style={{
+            maxWidth: fullDocumentMode ? 1320 : 'none',
+            margin: fullDocumentMode ? '0 auto' : 0,
+            display: fullDocumentMode ? 'grid' : 'block',
+            gridTemplateColumns: fullDocumentMode
+              ? showSideChrome
+                ? '260px minmax(0, 1fr)'
+                : 'minmax(0, 1fr)'
+              : undefined,
+            gap: fullDocumentMode ? 20 : 0,
+            alignItems: fullDocumentMode ? 'start' : undefined,
+          }}
+        >
+          {showSideChrome && editor && (
+            <DocumentEditorRail
+              editor={editor}
+              page={page}
+              onToggleChrome={onToggleChrome}
+              onTitleChange={onTitleChange}
+            />
+          )}
 
-            <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
+            {fullDocumentMode && (
               <div
                 style={{
                   display: 'flex',
@@ -625,20 +693,20 @@ function PageEditor({
                 <span>{page.title || 'Untitled'}</span>
                 <span>Page 1</span>
               </div>
+            )}
 
-              <div className="document-sheet">
-                <EditorContent editor={editor} />
+            <div className={fullDocumentMode ? 'document-sheet' : undefined} style={fullDocumentMode ? undefined : { minWidth: 0 }}>
+              <EditorContent editor={editor} />
 
+              {fullDocumentMode && (
                 <div className="document-sheet-footer">
                   <span>{page.title || 'Untitled'}</span>
                   <span>Page 1</span>
                 </div>
-              </div>
+              )}
             </div>
           </div>
-        ) : (
-          <EditorContent editor={editor} />
-        )}
+        </div>
       </div>
     </div>
   );
@@ -739,7 +807,8 @@ function FormatBar({
   tone: 'app' | 'doc';
   variant?: 'bar' | 'panel';
 }) {
-  const color = editor.getAttributes('textStyle').color ?? '#111827';
+  const rawColor = editor.getAttributes('textStyle').color ?? '#111827';
+  const color = normalizeColorInputValue(rawColor);
   const fontFamily = editor.getAttributes('textStyle').fontFamily ?? 'Space Grotesk';
   const linkHref = editor.getAttributes('link').href ?? '';
   const inputSurface = tone === 'doc' ? 'var(--doc-toolbar-bg)' : 'var(--glass-bg)';
@@ -901,6 +970,33 @@ function FormatBar({
       .run();
   };
 
+  const insertDataChart = () => {
+    let preferredModel: string | null = null;
+    let fallbackModel: string | null = null;
+    const selectionFrom = editor.state.selection.from;
+
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'dataSheet') return;
+      const model = typeof node.attrs.model === 'string' ? node.attrs.model : null;
+      if (!model) return;
+      fallbackModel ??= model;
+      if (pos <= selectionFrom) {
+        preferredModel = model;
+      }
+    });
+
+    const chartModel = preferredModel ?? fallbackModel ?? serializeDataSheet(createDefaultDataSheet());
+
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: 'dataChart',
+        attrs: { model: chartModel },
+      })
+      .run();
+  };
+
   return (
     <div
       style={{
@@ -997,7 +1093,9 @@ function FormatBar({
               width: 16,
               height: 16,
               borderRadius: '50%',
-              border: color === preset ? `2px solid ${text}` : `1px solid ${border}`,
+              border: normalizeColorInputValue(rawColor) === normalizeColorInputValue(preset)
+                ? `2px solid ${text}`
+                : `1px solid ${border}`,
               background: preset,
               cursor: 'pointer',
             }}
@@ -1084,6 +1182,18 @@ function FormatBar({
         }}
       >
         <Icon name="table_chart" size={15} />
+      </FormatButton>
+
+      <FormatButton
+        title="Insert chart block"
+        active={false}
+        tone={tone}
+        onMouseDown={(event) => {
+          event.preventDefault();
+          insertDataChart();
+        }}
+      >
+        <Icon name="insert_chart" size={15} />
       </FormatButton>
 
       <FormatButton
@@ -1211,6 +1321,26 @@ function findPage(pages: DocPage[], id: string | null): DocPage | null {
 
 function countPages(pages: DocPage[]): number {
   return pages.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0);
+}
+
+function normalizeColorInputValue(value: string | undefined) {
+  const fallback = '#111827';
+  if (!value) return fallback;
+
+  const normalized = value.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(normalized)) return normalized;
+  if (/^#[0-9a-f]{3}$/.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+  }
+
+  const rgbMatch = normalized.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/);
+  if (rgbMatch) {
+    const toHex = (channel: string) =>
+      Math.max(0, Math.min(255, Number(channel))).toString(16).padStart(2, '0');
+    return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`;
+  }
+
+  return fallback;
 }
 
 function getControlStyle(tone: 'app' | 'doc'): CSSProperties {

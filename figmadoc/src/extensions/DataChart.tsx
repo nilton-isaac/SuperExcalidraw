@@ -1,19 +1,26 @@
 import { mergeAttributes, Node } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
-import { DataSheetNodeView } from '../components/docs/DataSheetBlock';
+import { DataChartNodeView } from '../components/docs/DataChartBlock';
 import { createDefaultDataSheet, serializeDataSheet } from '../lib/dataSheet';
 
-export const DataSheet = Node.create({
-  name: 'dataSheet',
+export const DataChart = Node.create({
+  name: 'dataChart',
   group: 'block',
   atom: true,
   selectable: true,
   draggable: false,
 
   addAttributes() {
+    const baseModel = createDefaultDataSheet();
     return {
       model: {
-        default: serializeDataSheet(createDefaultDataSheet()),
+        default: serializeDataSheet({
+          ...baseModel,
+          chart: {
+            ...baseModel.chart,
+            visible: true,
+          },
+        }),
         parseHTML: (element: HTMLElement) => element.getAttribute('data-model'),
         renderHTML: (attributes: Record<string, string>) => ({
           'data-model': attributes.model,
@@ -25,16 +32,16 @@ export const DataSheet = Node.create({
   parseHTML() {
     return [
       {
-        tag: 'div[data-data-sheet="true"]',
+        tag: 'div[data-data-chart="true"]',
       },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-data-sheet': 'true' })];
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-data-chart': 'true' })];
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(DataSheetNodeView);
+    return ReactNodeViewRenderer(DataChartNodeView);
   },
 });

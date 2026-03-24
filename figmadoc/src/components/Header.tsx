@@ -5,6 +5,22 @@ import type { Tool } from '../types';
 import { Icon } from './Icon';
 import { AuthModal } from './AuthModal';
 
+const PLATFORM_NAME = 'Synth';
+const BOARD_EXPORT_FORMAT = 'synth-board';
+const BACKUP_EXPORT_FORMAT = 'synth-backup';
+const LEGACY_BACKUP_EXPORT_FORMATS = ['superexcalidraw-backup'];
+
+const isBackupExportFormat = (value: unknown) =>
+  typeof value === 'string' && (value === BACKUP_EXPORT_FORMAT || LEGACY_BACKUP_EXPORT_FORMATS.includes(value));
+
+const buildBrowserTitle = (title: string) => {
+  const normalized = title.trim();
+  if (!normalized || normalized === PLATFORM_NAME) {
+    return PLATFORM_NAME;
+  }
+  return `${normalized} | ${PLATFORM_NAME}`;
+};
+
 const TOOL_GROUPS: Array<Array<{ tool: Tool; icon: string; label: string }>> = [
   [
     { tool: 'select', icon: 'north_west', label: 'Select (V)' },
@@ -46,12 +62,16 @@ export function Header() {
     setLayoutMode,
     panelMode,
     setPanelMode,
+    persistenceMode,
+    setPersistenceMode,
     undo,
     redo,
     undoPast,
     undoFuture,
     savedBoards,
     activeBoardId,
+    getCurrentBoardRecord,
+    markBoardCloudSynced,
     saveCurrentBoard,
     saveBoardAs,
     loadBoard,
@@ -59,7 +79,7 @@ export function Header() {
     createBoard,
   } = useStore();
 
-  const { status: authStatus } = useAuthStore();
+  const { status: authStatus, pushBoardToCloud } = useAuthStore();
 
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(documentTitle);
@@ -70,37 +90,72 @@ export function Header() {
   useEffect(() => {
     setTitleDraft(documentTitle);
     setBoardNameDraft(documentTitle);
-    document.title = documentTitle;
+    document.title = buildBrowserTitle(documentTitle);
   }, [documentTitle]);
 
   const commitTitle = () => {
     setTitleEditing(false);
-    const nextTitle = titleDraft.trim() || 'Sketch Docs';
+    const nextTitle = titleDraft.trim() || PLATFORM_NAME;
     setDocumentTitle(nextTitle);
+  };
+
+  const handlePrimarySave = async () => {
+    if (persistenceMode === 'local') {
+      saveCurrentBoard();
+      return;
+    }
+
+    if (authStatus !== 'authenticated') {
+      setAuthOpen(true);
+      return;
+    }
+
+    try {
+      const board = getCurrentBoardRecord();
+      const cloudId = await pushBoardToCloud(board);
+      markBoardCloudSynced(board.id, cloudId);
+    } catch {
+      setBoardsOpen(true);
+    }
+  };
+
+  const handleCreateBoard = () => {
+    createBoard();
+    if (boardsOpen) {
+      setBoardsOpen(false);
+    }
   };
 
   return (
     <header
       style={{
-        height: 58,
+        height: 'calc(58px + var(--safe-area-top))',
         background: 'linear-gradient(180deg, color-mix(in srgb, var(--glass-bg) 96%, white), color-mix(in srgb, var(--glass-bg) 76%, transparent))',
         borderBottom: '1px solid var(--glass-border)',
         backdropFilter: 'var(--glass-blur)',
         WebkitBackdropFilter: 'var(--glass-blur)',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 10px',
+        padding: 'var(--safe-area-top) calc(var(--safe-area-right) + 10px) 0 calc(var(--safe-area-left) + 10px)',
         gap: 8,
         flexShrink: 0,
         zIndex: 100,
         boxShadow: '0 14px 40px rgba(15, 23, 42, 0.08)',
+        boxSizing: 'border-box',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 0 auto', marginRight: 6 }}>
         <img
           src="/logo.png"
-          alt="Logo"
-          style={{ width: 30, height: 30, borderRadius: 10, objectFit: 'contain', flexShrink: 0 }}
+          alt={`${PLATFORM_NAME} logo`}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 11,
+            objectFit: 'cover',
+            flexShrink: 0,
+            boxShadow: '0 12px 28px rgba(76, 90, 124, 0.18)',
+          }}
         />
 
         {titleEditing ? (
@@ -230,9 +285,9 @@ export function Header() {
 
         <ActionBtn
           icon="save"
-          onClick={() => saveCurrentBoard()}
+          onClick={handlePrimarySave}
         >
-          Save
+          {persistenceMode === 'cloud' ? 'Salvar Nuvem' : 'Save'}
         </ActionBtn>
 
         <ActionBtn
@@ -244,9 +299,9 @@ export function Header() {
 
         <ActionBtn
           icon="add_box"
-          onClick={() => createBoard()}
+          onClick={handleCreateBoard}
         >
-          New
+          {persistenceMode === 'cloud' ? 'Nova Nuvem' : 'New'}
         </ActionBtn>
 
         <Divider />
@@ -265,10 +320,12 @@ export function Header() {
           activeBoardId={activeBoardId}
           boardNameDraft={boardNameDraft}
           documentTitle={documentTitle}
+          persistenceMode={persistenceMode}
           savedBoards={savedBoards}
+          onPersistenceModeChange={setPersistenceMode}
           onBoardNameDraftChange={setBoardNameDraft}
           onClose={() => setBoardsOpen(false)}
-          onCreateBoard={() => { createBoard(); setBoardsOpen(false); }}
+          onCreateBoard={handleCreateBoard}
           onDeleteBoard={deleteBoard}
           onLoadBoard={(id) => { loadBoard(id); setBoardsOpen(false); }}
           onSaveAs={() => saveBoardAs(boardNameDraft)}
@@ -351,7 +408,9 @@ function BoardManager({
   activeBoardId,
   boardNameDraft,
   documentTitle,
+  persistenceMode,
   savedBoards,
+  onPersistenceModeChange,
   onBoardNameDraftChange,
   onClose,
   onCreateBoard,
@@ -365,7 +424,9 @@ function BoardManager({
   activeBoardId: string | null;
   boardNameDraft: string;
   documentTitle: string;
+  persistenceMode: 'local' | 'cloud';
   savedBoards: Array<{ id: string; name: string; updatedAt: string; cloudId?: string; cloudSyncedAt?: string }>;
+  onPersistenceModeChange: (mode: 'local' | 'cloud') => void;
   onBoardNameDraftChange: (value: string) => void;
   onClose: () => void;
   onCreateBoard: () => void;
@@ -378,8 +439,8 @@ function BoardManager({
 }) {
   const importSingleRef = useRef<HTMLInputElement>(null);
   const importAllRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'local' | 'cloud'>('local');
   const [cloudActionLoading, setCloudActionLoading] = useState<string | null>(null);
+  const activeTab = persistenceMode;
 
   const {
     status: authStatus,
@@ -400,7 +461,12 @@ function BoardManager({
     setAutoSaveInterval,
   } = useAuthStore();
 
-  const { markBoardCloudSynced, loadBoardFromSnapshot, activeBoardId: currentBoardId, savedBoards: allBoards } = useStore.getState();
+  const {
+    markBoardCloudSynced,
+    loadBoardFromSnapshot,
+    activeBoardId: currentBoardId,
+    getCurrentBoardRecord,
+  } = useStore();
   const importCloudRef = useRef<HTMLInputElement>(null);
   const [renamingCloudId, setRenamingCloudId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -412,13 +478,13 @@ function BoardManager({
     }
   }, [activeTab, authStatus, fetchCloudBoards]);
 
-  const handlePushToCloud = async (boardId: string) => {
-    const board = allBoards.find((b) => b.id === boardId);
-    if (!board) return;
-    setCloudActionLoading(`push-${boardId}`);
+  const handlePushToCloud = async () => {
+    const board = getCurrentBoardRecord();
+    const actionKey = currentBoardId ? `push-${currentBoardId}` : 'push-current';
+    setCloudActionLoading(actionKey);
     try {
       const cloudId = await pushBoardToCloud(board);
-      markBoardCloudSynced(boardId, cloudId);
+      markBoardCloudSynced(board.id, cloudId);
     } catch {
       // error shown via cloudError state
     } finally {
@@ -433,7 +499,7 @@ function BoardManager({
       loadBoardFromSnapshot(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         snapshot as any,
-        { id: remoteLocalId || localId, name: name || cloudName, cloudId }
+        { id: remoteLocalId || localId, name: name || cloudName, cloudId, saveLocally: false }
       );
       onClose();
     } catch {
@@ -472,7 +538,7 @@ function BoardManager({
     setCloudActionLoading(`export-${cloudId}`);
     try {
       const { snapshot, name } = await pullBoardFromCloud(cloudId);
-      const payload = { format: 'superexcalidraw-board', version: 1, ...snapshot, documentTitle: name, exportedAt: new Date().toISOString() };
+      const payload = { format: BOARD_EXPORT_FORMAT, version: 1, ...snapshot, documentTitle: name, exportedAt: new Date().toISOString() };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -491,7 +557,7 @@ function BoardManager({
     reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target?.result as string) as Record<string, unknown>;
-        const boards = data.format === 'superexcalidraw-backup' && Array.isArray(data.boards)
+        const boards = isBackupExportFormat(data.format) && Array.isArray(data.boards)
           ? (data.boards as Array<{ id: string; name: string; updatedAt: string; snapshot: Record<string, unknown> }>)
           : [{ id: crypto.randomUUID(), name: String(data.documentTitle ?? 'Imported'), updatedAt: new Date().toISOString(), snapshot: data }];
         for (const b of boards) {
@@ -509,7 +575,7 @@ function BoardManager({
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        if (mode === 'all' || data.format === 'superexcalidraw-backup') {
+        if (mode === 'all' || isBackupExportFormat(data.format)) {
           importAllBoards(data);
         } else {
           importBoard(data);
@@ -525,7 +591,7 @@ function BoardManager({
   const exportCurrent = () => {
     const state = useStore.getState();
     const payload = {
-      format: 'superexcalidraw-board',
+      format: BOARD_EXPORT_FORMAT,
       version: 1,
       documentTitle: state.documentTitle,
       elements: state.elements,
@@ -550,7 +616,7 @@ function BoardManager({
   const exportAll = () => {
     const { savedBoards: boards } = useStore.getState();
     const payload = {
-      format: 'superexcalidraw-backup',
+      format: BACKUP_EXPORT_FORMAT,
       version: 1,
       boards,
       exportedAt: new Date().toISOString(),
@@ -558,7 +624,7 @@ function BoardManager({
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `superexcalidraw-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `synth-backup-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -581,10 +647,10 @@ function BoardManager({
       <div
         style={{
           position: 'fixed',
-          top: 76,
-          right: 16,
-          width: 440,
-          maxHeight: 'calc(100vh - 92px)',
+          top: 'calc(var(--safe-area-top) + 76px)',
+          right: 'calc(var(--safe-area-right) + 16px)',
+          width: 'min(440px, calc(100vw - var(--safe-area-left) - var(--safe-area-right) - 32px))',
+          maxHeight: 'calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom) - 92px)',
           overflow: 'hidden',
           borderRadius: 18,
           border: '1px solid var(--border-color)',
@@ -612,7 +678,7 @@ function BoardManager({
           {(['local', 'cloud'] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); if (cloudError) clearCloudError(); }}
+              onClick={() => { onPersistenceModeChange(tab); if (cloudError) clearCloudError(); }}
               style={{
                 flex: 1,
                 height: 40,
@@ -700,11 +766,6 @@ function BoardManager({
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(board.updatedAt).toLocaleString()}</span>
-                          {board.cloudId && (
-                            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 2 }}>
-                              <Icon name="cloud_done" size={11} /> Nuvem
-                            </span>
-                          )}
                         </div>
                       </div>
                       {board.id === activeBoardId && (
@@ -715,14 +776,6 @@ function BoardManager({
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <ActionBtn icon="folder_open" onClick={() => onLoadBoard(board.id)}>Open</ActionBtn>
-                      {authStatus === 'authenticated' && (
-                        <ActionBtn
-                          icon={cloudActionLoading === `push-${board.id}` ? 'sync' : 'cloud_upload'}
-                          onClick={() => handlePushToCloud(board.id)}
-                        >
-                          {board.cloudId ? 'Sincronizar' : 'Enviar'}
-                        </ActionBtn>
-                      )}
                       <ActionBtn icon="delete" onClick={() => onDeleteBoard(board.id)}>Delete</ActionBtn>
                     </div>
                   </div>
@@ -791,10 +844,10 @@ function BoardManager({
                 <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
                   <ActionBtn icon="refresh" onClick={fetchCloudBoards}>Atualizar</ActionBtn>
                   <ActionBtn
-                    icon={cloudActionLoading === `push-${currentBoardId}` ? 'sync' : 'cloud_upload'}
-                    onClick={() => currentBoardId ? handlePushToCloud(currentBoardId) : handlePushToCloud(useStore.getState().activeBoardId ?? 'tmp')}
+                    icon={cloudActionLoading === (currentBoardId ? `push-${currentBoardId}` : 'push-current') ? 'sync' : 'cloud_upload'}
+                    onClick={handlePushToCloud}
                   >
-                    Enviar atual
+                    Salvar na nuvem
                   </ActionBtn>
                   <ActionBtn icon="upload" onClick={() => importCloudRef.current?.click()}>Import → Nuvem</ActionBtn>
                 </div>
@@ -818,7 +871,7 @@ function BoardManager({
                     </div>
                   ) : cloudBoards.length === 0 ? (
                     <div style={{ padding: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                      Nenhuma board na nuvem ainda. Use "Enviar atual" para fazer upload.
+                      Nenhuma board na nuvem ainda. Use "Salvar na nuvem" para criar a primeira.
                     </div>
                   ) : (
                     cloudBoards.map((cb) => (

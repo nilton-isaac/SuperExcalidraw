@@ -1,4 +1,4 @@
-# 📐 Sketch Docs - Documentação Técnica Completa
+# Synth - Documentação Técnica Completa
 
 ## 🎯 Visão do Projeto
 

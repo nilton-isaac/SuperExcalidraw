@@ -1,5 +1,7 @@
 import type { ChartType } from '../types';
 
+export type DataSheetDisplayMode = 'editor' | 'presentation';
+
 export interface DataSheetColumn {
   id: string;
   label: string;
@@ -21,6 +23,7 @@ export interface DataSheetChartSettings {
 
 export interface DataSheetModel {
   title: string;
+  displayMode: DataSheetDisplayMode;
   columns: DataSheetColumn[];
   rows: DataSheetRow[];
   chart: DataSheetChartSettings;
@@ -64,6 +67,7 @@ export function createDefaultDataSheet(): DataSheetModel {
 
   return {
     title: 'Untitled Sheet',
+    displayMode: 'editor',
     columns,
     rows: [
       createDataSheetRow(columns.length, ['', '', '']),
@@ -122,6 +126,7 @@ export function parseDataSheet(value?: string | null): DataSheetModel {
 
     return {
       title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : fallback.title,
+      displayMode: parsed.displayMode === 'presentation' ? 'presentation' : 'editor',
       columns,
       rows,
       chart: {

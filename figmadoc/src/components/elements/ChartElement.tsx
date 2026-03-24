@@ -46,6 +46,7 @@ const DEFAULT_COLORS = ['#5b8cff', '#3ecf8e', '#ff8a65', '#f7c04a', '#a17cff', '
 export function ChartElementComponent({ element, selected, zoom = 1, onPointerDown }: Props) {
   const { elements, updateElement } = useStore();
   const [fullscreen, setFullscreen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [modalBounds, setModalBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const tables = elements.filter((candidate) => candidate.type === 'table');
   const sourceTable = tables.find((candidate) => candidate.id === element.properties.sourceTableId) ?? tables[0];
@@ -75,6 +76,12 @@ export function ChartElementComponent({ element, selected, zoom = 1, onPointerDo
     window.addEventListener('resize', updateBounds);
     return () => window.removeEventListener('resize', updateBounds);
   }, [fullscreen, measureModalBounds]);
+
+  useEffect(() => {
+    if (!selected && !fullscreen) {
+      setSettingsOpen(false);
+    }
+  }, [selected, fullscreen]);
 
   const selectableValueColumns = sourceModel
     ? sourceModel.columns
@@ -345,7 +352,7 @@ export function ChartElementComponent({ element, selected, zoom = 1, onPointerDo
       <div
         style={{
           height: 40,
-          display: 'flex',
+          display: 'none',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 10,
@@ -388,24 +395,75 @@ export function ChartElementComponent({ element, selected, zoom = 1, onPointerDo
         </button>
       </div>
 
+      {(selected || mode === 'modal') && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              setSettingsOpen((current) => !current);
+            }}
+            style={iconButtonStyle}
+            title="Chart settings"
+          >
+            <Icon name="tune" size={16} />
+          </button>
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              if (mode === 'modal') {
+                setFullscreen(false);
+                return;
+              }
+              setModalBounds(measureModalBounds());
+              setFullscreen(true);
+            }}
+            style={iconButtonStyle}
+            title={mode === 'modal' ? 'Close fullscreen' : 'Open fullscreen'}
+          >
+            <Icon name={mode === 'modal' ? 'fullscreen_exit' : 'fullscreen'} size={16} />
+          </button>
+        </div>
+      )}
+
       <div
         style={{
           flex: 1,
           minHeight: 0,
           display: 'grid',
-          gridTemplateColumns: '180px minmax(0, 1fr)',
+          gridTemplateColumns: 'minmax(0, 1fr)',
+          position: 'relative',
+          padding: selected || mode === 'modal' ? '48px 0 0' : '0',
         }}
       >
         <div
           style={{
-            borderRight: '1px solid var(--glass-border)',
+            position: 'absolute',
+            top: 52,
+            right: 10,
+            width: 'min(280px, calc(100% - 20px))',
+            zIndex: 11,
             padding: 12,
-            display: 'grid',
+            display: (selected || mode === 'modal') && settingsOpen ? 'grid' : 'none',
             gap: 10,
             alignContent: 'start',
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.08), transparent)',
+            maxHeight: 'calc(100% - 62px)',
             overflowY: 'auto',
+            border: '1px solid color-mix(in srgb, var(--glass-border) 88%, white)',
+            borderRadius: 18,
+            background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 96%, white), color-mix(in srgb, var(--surface-floating) 94%, transparent))',
+            boxShadow: '0 20px 48px rgba(15, 23, 42, 0.16)',
           }}
+          onPointerDown={(event) => event.stopPropagation()}
         >
           <div style={sectionEyebrowStyle}>Chart Source</div>
 
@@ -505,11 +563,22 @@ export function ChartElementComponent({ element, selected, zoom = 1, onPointerDo
           )}
         </div>
 
-        <div style={{ minWidth: 0, minHeight: 0, display: 'grid', gridTemplateRows: 'auto minmax(0,1fr)' }}>
-          <div style={{ padding: '12px 14px 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+        <div
+          style={{
+            minWidth: 0,
+            minHeight: 0,
+            display: 'grid',
+            gridTemplateRows: 'auto minmax(0,1fr)',
+            borderRadius: 18,
+            border: 'none',
+            background: 'transparent',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '8px 12px 0', fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
             {element.properties.title || sourceModel?.title || 'Chart'}
           </div>
-          <div style={{ minHeight: 0, padding: 8 }}>{renderChart()}</div>
+          <div style={{ minHeight: 0, padding: '0 4px 4px' }}>{renderChart()}</div>
         </div>
       </div>
 

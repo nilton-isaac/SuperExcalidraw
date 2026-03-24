@@ -1,5 +1,5 @@
 -- ============================================================
--- SuperExcalidraw — Supabase Schema
+-- Synth — Supabase Schema
 -- Execute este script no SQL Editor do seu projeto Supabase:
 --   https://supabase.com → SQL Editor → New query → Cole e rode
 -- ============================================================

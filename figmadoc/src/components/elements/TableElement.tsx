@@ -50,13 +50,10 @@ export function TableElementComponent({ element, selected, zoom, onPointerDown }
         width: mode === 'modal' ? modalBounds?.width ?? window.innerWidth : element.width,
         height: mode === 'modal' ? modalBounds?.height ?? window.innerHeight : element.height,
         zIndex: mode === 'modal' ? 1201 : element.zIndex,
-        borderRadius: 28,
-        overflow: 'hidden',
-        boxShadow: selected || mode === 'modal' ? '0 0 0 2px var(--primary), var(--shadow-lg)' : 'var(--shadow-md)',
-        border: '1px solid var(--glass-border)',
-        background: 'var(--glass-bg)',
-        backdropFilter: 'var(--glass-blur)',
-        WebkitBackdropFilter: 'var(--glass-blur)',
+        borderRadius: 0,
+        overflow: 'visible',
+        boxShadow: selected && mode !== 'modal' ? '0 0 0 2px var(--primary)' : 'none',
+        background: 'transparent',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -74,56 +71,31 @@ export function TableElementComponent({ element, selected, zoom, onPointerDown }
       }}
       onWheel={(event) => event.stopPropagation()}
     >
-      <div
-        style={{
-          height: 40,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-          padding: '0 14px',
-          borderBottom: '1px solid var(--glass-border)',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.08), transparent)',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <Icon name="table_chart" size={16} />
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--text-primary)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+      {(selected || mode === 'modal') && (
+        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 12 }}>
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              if (mode === 'modal') {
+                setFullscreen(false);
+                return;
+              }
+              setModalBounds(measureModalBounds());
+              setFullscreen(true);
             }}
+            style={iconButtonStyle}
+            title={mode === 'modal' ? 'Close fullscreen' : 'Open fullscreen'}
           >
-            {model.title || 'Untitled Table'}
-          </span>
+            <Icon name={mode === 'modal' ? 'fullscreen_exit' : 'fullscreen'} size={16} />
+          </button>
         </div>
+      )}
 
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            if (mode === 'modal') {
-              setFullscreen(false);
-              return;
-            }
-            setModalBounds(measureModalBounds());
-            setFullscreen(true);
-          }}
-          style={iconButtonStyle}
-          title={mode === 'modal' ? 'Close fullscreen' : 'Open fullscreen'}
-        >
-          <Icon name={mode === 'modal' ? 'fullscreen_exit' : 'fullscreen'} size={16} />
-        </button>
-      </div>
-
-      <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
+      <div style={{ flex: 1, overflow: 'auto' }}>
         <DataSheetCard
           model={model}
           selected={selected}
+          variant="whiteboard"
           onChange={(next) =>
             updateElement(element.id, {
               properties: {

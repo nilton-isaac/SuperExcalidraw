@@ -1,3 +1,5 @@
+import type { JSONContent } from '@tiptap/core';
+
 export type Tool =
   | 'select'
   | 'hand'
@@ -119,6 +121,7 @@ export interface DocPage {
   id: string;
   title: string;
   content: string;
+  contentJson?: JSONContent | null;
   icon: string;
   children?: DocPage[];
 }

@@ -9,10 +9,10 @@ import {
 } from '../lib/whiteboardData';
 
 const MAX_HISTORY = 60;
-const APP_STORAGE_KEY = 'sketch-docs-v1';
-const LEGACY_STORAGE_KEYS = ['code-canvas-v1', 'figmadoc-v1'];
-const APP_NAME = 'Sketch Docs';
-const LEGACY_APP_NAMES = ['Code Canvas', 'FigmaDoc'];
+const APP_STORAGE_KEY = 'synth-v1';
+const LEGACY_STORAGE_KEYS = ['sketch-docs-v1', 'code-canvas-v1', 'figmadoc-v1', 'superexcalidraw-v1'];
+const APP_NAME = 'Synth';
+const LEGACY_APP_NAMES = ['Sketch Docs', 'SuperExcalidraw', 'Code Canvas', 'FigmaDoc'];
 
 const PAGE_ICON_MAP: Record<string, string> = {
   '📄': 'description',
@@ -61,9 +61,13 @@ const normalizeLegacyTitle = (value?: string | null) => {
   return normalized;
 };
 
+const DEFAULT_PAGE_CONTENT = '<h1>Untitled</h1><p>Start writing here...</p>';
+
 const normalizePages = (pages: DocPage[]): DocPage[] =>
   pages.map((page) => ({
     ...page,
+    content: typeof page.content === 'string' ? page.content : DEFAULT_PAGE_CONTENT,
+    contentJson: page.contentJson ?? null,
     icon: normalizePageIcon(page.icon),
     children: page.children ? normalizePages(page.children) : undefined,
   }));
@@ -73,7 +77,7 @@ const makeInitialPages = (): DocPage[] => [
     id: 'page-1',
     title: 'Untitled',
     icon: 'description',
-    content: '<h1>Untitled</h1><p>Start writing here...</p>',
+    content: DEFAULT_PAGE_CONTENT,
   },
 ];
 
@@ -150,7 +154,7 @@ interface ToolDefaults {
   };
 }
 
-interface BoardSnapshot {
+export interface BoardSnapshot {
   elements: WhiteboardElement[];
   pages: DocPage[];
   activePageId: string | null;
@@ -163,7 +167,7 @@ interface BoardSnapshot {
   viewState: ViewState;
 }
 
-interface SavedBoard {
+export interface SavedBoard {
   id: string;
   name: string;
   updatedAt: string;
@@ -172,6 +176,15 @@ interface SavedBoard {
   cloudSyncedAt?: string;   // ISO timestamp do último push para a nuvem
 }
 
+export type PersistenceMode = 'local' | 'cloud';
+
+interface CloudWorkspaceCache {
+  snapshot: BoardSnapshot;
+  boardId: string | null;
+  cloudId: string | null;
+}
+
+const createWorkingBoardId = () => uuidv4();
 const makeInitialViewState = (): ViewState => ({ x: 0, y: 0, zoom: 1 });
 const makeInitialToolDefaults = (): ToolDefaults => ({
   shape: {
@@ -275,13 +288,34 @@ const createBoardSnapshot = (state: Pick<
   viewState: cloneData(state.viewState),
 });
 
+const normalizeBoardSnapshot = (snapshot: Partial<BoardSnapshot> | undefined, fallbackTitle = APP_NAME): BoardSnapshot => {
+  const pages = normalizePages(snapshot?.pages ?? makeInitialPages());
+  return {
+    elements: snapshot?.elements ?? [],
+    pages,
+    activePageId: snapshot?.activePageId ?? findFirstPageId(pages),
+    documentTitle: normalizeLegacyTitle(snapshot?.documentTitle ?? fallbackTitle),
+    theme: snapshot?.theme ?? 'light',
+    layoutMode: snapshot?.layoutMode ?? 'horizontal',
+    splitRatio: snapshot?.splitRatio ?? 0.28,
+    panelMode: snapshot?.panelMode ?? 'split',
+    docsNavigatorCollapsed: snapshot?.docsNavigatorCollapsed ?? false,
+    viewState: snapshot?.viewState ?? makeInitialViewState(),
+  };
+};
+
 interface AppStore {
   elements: WhiteboardElement[];
   pages: DocPage[];
   activePageId: string | null;
   documentTitle: string;
+  persistenceMode: PersistenceMode;
   savedBoards: SavedBoard[];
+  localSnapshot: BoardSnapshot;
+  localActiveBoardId: string | null;
+  cloudWorkspace: CloudWorkspaceCache | null;
   activeBoardId: string | null;
+  activeCloudBoardId: string | null;
   theme: 'light' | 'dark';
   layoutMode: 'horizontal' | 'vertical';
   splitRatio: number;
@@ -331,6 +365,8 @@ interface AppStore {
   deletePage: (id: string) => void;
   setActivePageId: (id: string) => void;
   setDocumentTitle: (title: string) => void;
+  ensureActiveBoardId: () => string;
+  getCurrentBoardRecord: (name?: string) => SavedBoard;
   saveCurrentBoard: (name?: string) => string;
   saveBoardAs: (name: string) => string;
   loadBoard: (id: string) => void;
@@ -338,8 +374,11 @@ interface AppStore {
   createBoard: (title?: string) => void;
   importBoard: (data: unknown) => void;
   importAllBoards: (data: unknown) => void;
-  loadBoardFromSnapshot: (snapshot: BoardSnapshot, meta: { id?: string; name: string; cloudId?: string }) => void;
+  loadBoardFromSnapshot: (snapshot: BoardSnapshot, meta: { id?: string; name: string; cloudId?: string; saveLocally?: boolean }) => void;
   markBoardCloudSynced: (localId: string, cloudId: string) => void;
+  setActiveCloudBoardId: (cloudId: string | null) => void;
+  restorePersistenceMode: () => void;
+  setPersistenceMode: (mode: PersistenceMode) => void;
 
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
@@ -356,18 +395,55 @@ interface AppStore {
 
 export const useStore = create<AppStore>()(
   persist(
-    (set, get) => ({
-      elements: [],
-      pages: makeInitialPages(),
-      activePageId: 'page-1',
-      documentTitle: APP_NAME,
+    (set, get) => {
+      const initialBoardId = createWorkingBoardId();
+      const initialSnapshot = makeBlankBoard(APP_NAME);
+      const buildRuntimeState = (
+        snapshot: BoardSnapshot,
+        boardId: string | null,
+        cloudId: string | null
+      ) => {
+        const normalizedSnapshot = normalizeBoardSnapshot(snapshot, snapshot.documentTitle);
+        const pages = normalizePages(normalizedSnapshot.pages);
+
+        return {
+          elements: normalizedSnapshot.elements,
+          pages,
+          activePageId: normalizedSnapshot.activePageId ?? findFirstPageId(pages),
+          documentTitle: normalizedSnapshot.documentTitle,
+          activeBoardId: boardId,
+          activeCloudBoardId: cloudId,
+          theme: normalizedSnapshot.theme,
+          layoutMode: normalizedSnapshot.layoutMode,
+          splitRatio: normalizedSnapshot.splitRatio,
+          panelMode: normalizedSnapshot.panelMode,
+          docsNavigatorCollapsed: normalizedSnapshot.docsNavigatorCollapsed,
+          viewState: normalizedSnapshot.viewState,
+          selectedIds: [],
+          activeTool: 'select' as Tool,
+          undoPast: [],
+          undoFuture: [],
+          clipboard: [],
+        };
+      };
+
+      return {
+      elements: initialSnapshot.elements,
+      pages: initialSnapshot.pages,
+      activePageId: initialSnapshot.activePageId,
+      documentTitle: initialSnapshot.documentTitle,
+      persistenceMode: 'local',
       savedBoards: [],
-      activeBoardId: null,
-      theme: 'light',
-      layoutMode: 'horizontal',
-      splitRatio: 0.28,
-      panelMode: 'split',
-      docsNavigatorCollapsed: false,
+      localSnapshot: initialSnapshot,
+      localActiveBoardId: initialBoardId,
+      cloudWorkspace: null,
+      activeBoardId: initialBoardId,
+      activeCloudBoardId: null,
+      theme: initialSnapshot.theme,
+      layoutMode: initialSnapshot.layoutMode,
+      splitRatio: initialSnapshot.splitRatio,
+      panelMode: initialSnapshot.panelMode,
+      docsNavigatorCollapsed: initialSnapshot.docsNavigatorCollapsed,
       docsEditorChromeCollapsed: false,
       activeSurface: 'whiteboard',
       toolDefaults: makeInitialToolDefaults(),
@@ -622,7 +698,8 @@ export const useStore = create<AppStore>()(
           id: uuidv4(),
           title: 'Untitled',
           icon: 'article',
-          content: '<h1>Untitled</h1><p>Start writing here...</p>',
+          content: DEFAULT_PAGE_CONTENT,
+          contentJson: null,
         };
 
         set((state) => {
@@ -663,31 +740,59 @@ export const useStore = create<AppStore>()(
 
       setActivePageId: (id) => set({ activePageId: id }),
       setDocumentTitle: (documentTitle) => set({ documentTitle: normalizeLegacyTitle(documentTitle) }),
-      saveCurrentBoard: (name) => {
+      ensureActiveBoardId: () => {
+        const activeBoardId = get().activeBoardId;
+        if (activeBoardId) {
+          return activeBoardId;
+        }
+
+        const nextId = createWorkingBoardId();
+        set({ activeBoardId: nextId });
+        return nextId;
+      },
+      getCurrentBoardRecord: (name) => {
         const state = get();
-        const id = state.activeBoardId ?? uuidv4();
+        const id = state.ensureActiveBoardId();
         const boardName = name?.trim() || state.documentTitle.trim() || 'Untitled Board';
-        const nextBoard: SavedBoard = {
+        const existingBoard = state.persistenceMode === 'local'
+          ? state.savedBoards.find((board) => board.id === id)
+          : undefined;
+
+        return {
           id,
           name: boardName,
           updatedAt: new Date().toISOString(),
           snapshot: { ...createBoardSnapshot(state), documentTitle: boardName },
+          cloudId: state.activeCloudBoardId ?? existingBoard?.cloudId,
+          cloudSyncedAt: existingBoard?.cloudSyncedAt,
         };
+      },
+      saveCurrentBoard: (name) => {
+        if (get().persistenceMode !== 'local') {
+          return get().ensureActiveBoardId();
+        }
+        const nextBoard = get().getCurrentBoardRecord(name);
 
         set((current) => ({
           savedBoards: [
             nextBoard,
-            ...current.savedBoards.filter((board) => board.id !== id),
+            ...current.savedBoards.filter((board) => board.id !== nextBoard.id),
           ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
-          activeBoardId: id,
-          documentTitle: boardName,
+          activeBoardId: nextBoard.id,
+          activeCloudBoardId: nextBoard.cloudId ?? current.activeCloudBoardId,
+          documentTitle: nextBoard.name,
         }));
 
-        return id;
+        return nextBoard.id;
       },
       saveBoardAs: (name) => {
         const state = get();
-        const id = uuidv4();
+        if (state.persistenceMode !== 'local') {
+          const nextId = createWorkingBoardId();
+          set({ activeBoardId: nextId, activeCloudBoardId: null });
+          return nextId;
+        }
+        const id = createWorkingBoardId();
         const boardName = name.trim() || state.documentTitle.trim() || 'Untitled Board';
         const nextBoard: SavedBoard = {
           id,
@@ -699,12 +804,14 @@ export const useStore = create<AppStore>()(
         set((current) => ({
           savedBoards: [nextBoard, ...current.savedBoards].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
           activeBoardId: id,
+          activeCloudBoardId: null,
           documentTitle: boardName,
         }));
 
         return id;
       },
       loadBoard: (id) => {
+        if (get().persistenceMode !== 'local') return;
         const board = get().savedBoards.find((candidate) => candidate.id === id);
         if (!board) return;
 
@@ -716,6 +823,7 @@ export const useStore = create<AppStore>()(
           activePageId: snapshot.activePageId ?? findFirstPageId(pages),
           documentTitle: snapshot.documentTitle,
           activeBoardId: board.id,
+          activeCloudBoardId: board.cloudId ?? null,
           theme: snapshot.theme,
           layoutMode: snapshot.layoutMode,
           splitRatio: snapshot.splitRatio,
@@ -730,33 +838,34 @@ export const useStore = create<AppStore>()(
         });
       },
       deleteBoard: (id) =>
-        set((state) => ({
-          savedBoards: state.savedBoards.filter((board) => board.id !== id),
-          activeBoardId: state.activeBoardId === id ? null : state.activeBoardId,
-        })),
+        set((state) => (
+          state.persistenceMode !== 'local'
+            ? state
+            : {
+                savedBoards: state.savedBoards.filter((board) => board.id !== id),
+              }
+        )),
       createBoard: (title) => {
         const blank = makeBlankBoard(title?.trim() || 'Untitled Board');
+        const nextId = createWorkingBoardId();
+        if (get().persistenceMode === 'cloud') {
+          set({
+            ...buildRuntimeState(blank, nextId, null),
+            cloudWorkspace: {
+              snapshot: cloneData(blank),
+              boardId: nextId,
+              cloudId: null,
+            },
+          });
+          return;
+        }
         set({
-          elements: blank.elements,
-          pages: blank.pages,
-          activePageId: blank.activePageId,
-          documentTitle: blank.documentTitle,
-          activeBoardId: null,
-          theme: blank.theme,
-          layoutMode: blank.layoutMode,
-          splitRatio: blank.splitRatio,
-          panelMode: blank.panelMode,
-          docsNavigatorCollapsed: blank.docsNavigatorCollapsed,
-          selectedIds: [],
-          activeTool: 'select',
-          viewState: blank.viewState,
-          undoPast: [],
-          undoFuture: [],
-          clipboard: [],
+          ...buildRuntimeState(blank, nextId, null),
         });
       },
 
       importBoard: (rawData) => {
+        if (get().persistenceMode !== 'local') return;
         const data = rawData as Record<string, unknown>;
         if (!data || typeof data !== 'object') throw new Error('Invalid file');
         const elements = Array.isArray(data.elements) ? (data.elements as WhiteboardElement[]) : [];
@@ -785,6 +894,7 @@ export const useStore = create<AppStore>()(
           activePageId: snapshot.activePageId,
           documentTitle: boardName,
           activeBoardId: id,
+          activeCloudBoardId: null,
           theme: snapshot.theme,
           layoutMode: snapshot.layoutMode,
           splitRatio: snapshot.splitRatio,
@@ -801,6 +911,7 @@ export const useStore = create<AppStore>()(
       },
 
       importAllBoards: (rawData) => {
+        if (get().persistenceMode !== 'local') return;
         const data = rawData as Record<string, unknown>;
         if (!data || !Array.isArray(data.boards)) throw new Error('Invalid backup file');
         const imported = normalizeSavedBoards(data.boards as SavedBoard[]);
@@ -814,47 +925,125 @@ export const useStore = create<AppStore>()(
 
       loadBoardFromSnapshot: (snapshot, meta) => {
         const id = meta.id ?? uuidv4();
-        const pages = normalizePages(snapshot.pages);
+        const normalizedSnapshot = normalizeBoardSnapshot(snapshot, meta.name);
         const newBoard: SavedBoard = {
           id,
           name: meta.name,
           updatedAt: new Date().toISOString(),
-          snapshot,
+          snapshot: normalizedSnapshot,
           cloudId: meta.cloudId,
           cloudSyncedAt: meta.cloudId ? new Date().toISOString() : undefined,
         };
         set((current) => ({
-          elements: snapshot.elements,
-          pages,
-          activePageId: snapshot.activePageId ?? findFirstPageId(pages),
-          documentTitle: snapshot.documentTitle,
-          activeBoardId: id,
-          theme: snapshot.theme,
-          layoutMode: snapshot.layoutMode,
-          splitRatio: snapshot.splitRatio,
-          panelMode: snapshot.panelMode,
-          docsNavigatorCollapsed: snapshot.docsNavigatorCollapsed,
-          viewState: snapshot.viewState,
-          selectedIds: [],
-          activeTool: 'select',
-          undoPast: [],
-          undoFuture: [],
-          clipboard: [],
-          savedBoards: [
-            newBoard,
-            ...current.savedBoards.filter((b) => b.id !== id),
-          ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+          ...buildRuntimeState(normalizedSnapshot, id, meta.cloudId ?? null),
+          cloudWorkspace: current.persistenceMode === 'cloud' || meta.saveLocally === false
+            ? {
+                snapshot: cloneData(normalizedSnapshot),
+                boardId: id,
+                cloudId: meta.cloudId ?? null,
+              }
+            : current.cloudWorkspace,
+          savedBoards: current.persistenceMode === 'cloud' || meta.saveLocally === false
+            ? current.savedBoards
+            : [
+                newBoard,
+                ...current.savedBoards.filter((b) => b.id !== id),
+              ].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
         }));
       },
 
       markBoardCloudSynced: (localId, cloudId) =>
         set((current) => ({
-          savedBoards: current.savedBoards.map((b) =>
-            b.id === localId
-              ? { ...b, cloudId, cloudSyncedAt: new Date().toISOString() }
-              : b
-          ),
+          activeCloudBoardId: current.activeBoardId === localId ? cloudId : current.activeCloudBoardId,
+          cloudWorkspace: current.activeBoardId === localId
+            ? {
+                snapshot: cloneData(createBoardSnapshot(current)),
+                boardId: current.activeBoardId,
+                cloudId,
+              }
+            : current.cloudWorkspace,
+          savedBoards: current.persistenceMode === 'cloud'
+            ? current.savedBoards
+            : current.savedBoards.map((b) =>
+                b.id === localId
+                  ? { ...b, cloudId, cloudSyncedAt: new Date().toISOString() }
+                  : b
+              ),
         })),
+      setActiveCloudBoardId: (activeCloudBoardId) =>
+        set((state) => ({
+          activeCloudBoardId,
+          cloudWorkspace: state.persistenceMode === 'cloud'
+            ? {
+                snapshot: cloneData(createBoardSnapshot(state)),
+                boardId: state.activeBoardId,
+                cloudId: activeCloudBoardId,
+              }
+            : state.cloudWorkspace,
+        })),
+      restorePersistenceMode: () => {
+        const state = get();
+        if (state.persistenceMode !== 'cloud') {
+          return;
+        }
+
+        const cachedCloudWorkspace = state.cloudWorkspace ?? {
+          snapshot: makeBlankBoard('Untitled Board'),
+          boardId: state.activeBoardId ?? createWorkingBoardId(),
+          cloudId: state.activeCloudBoardId,
+        };
+
+        set({
+          ...buildRuntimeState(
+            cachedCloudWorkspace.snapshot,
+            cachedCloudWorkspace.boardId ?? createWorkingBoardId(),
+            cachedCloudWorkspace.cloudId ?? null
+          ),
+          cloudWorkspace: cachedCloudWorkspace,
+        });
+      },
+      setPersistenceMode: (mode) =>
+        set((state) => {
+          if (state.persistenceMode === mode) {
+            return state;
+          }
+
+          const currentSnapshot = cloneData(createBoardSnapshot(state));
+
+          if (mode === 'cloud') {
+            const nextCloudWorkspace = state.cloudWorkspace ?? {
+              snapshot: currentSnapshot,
+              boardId: state.activeBoardId,
+              cloudId: state.activeCloudBoardId,
+            };
+
+            return {
+              ...buildRuntimeState(
+                nextCloudWorkspace.snapshot,
+                nextCloudWorkspace.boardId ?? createWorkingBoardId(),
+                nextCloudWorkspace.cloudId ?? null
+              ),
+              persistenceMode: 'cloud',
+              localSnapshot: currentSnapshot,
+              localActiveBoardId: state.activeBoardId,
+              cloudWorkspace: nextCloudWorkspace,
+            };
+          }
+
+          return {
+            ...buildRuntimeState(
+              state.localSnapshot,
+              state.localActiveBoardId ?? createWorkingBoardId(),
+              null
+            ),
+            persistenceMode: 'local',
+            cloudWorkspace: {
+              snapshot: currentSnapshot,
+              boardId: state.activeBoardId,
+              cloudId: state.activeCloudBoardId,
+            },
+          };
+        }),
 
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
@@ -878,47 +1067,79 @@ export const useStore = create<AppStore>()(
             },
           },
         })),
-    }),
+      };
+    },
     {
       name: APP_STORAGE_KEY,
       storage: createJSONStorage(() => fallbackStorage),
-      version: 8,
+      version: 10,
       migrate: (persistedState) => {
         const state = persistedState as Partial<AppStore> | undefined;
-        const pages = state?.pages ? normalizePages(state.pages) : makeInitialPages();
+        const localSnapshot = normalizeBoardSnapshot(
+          state?.localSnapshot ?? {
+            elements: state?.elements,
+            pages: state?.pages,
+            activePageId: state?.activePageId,
+            documentTitle: state?.documentTitle,
+            theme: state?.theme,
+            layoutMode: state?.layoutMode,
+            splitRatio: state?.splitRatio,
+            panelMode: state?.panelMode,
+            docsNavigatorCollapsed: state?.docsNavigatorCollapsed,
+            viewState: state?.viewState,
+          },
+          state?.documentTitle ?? APP_NAME
+        );
+
         return {
-          elements: state?.elements ?? [],
-          pages,
-          activePageId: state?.activePageId ?? pages[0]?.id ?? null,
-          documentTitle: normalizeLegacyTitle(state?.documentTitle),
+          elements: localSnapshot.elements,
+          pages: localSnapshot.pages,
+          activePageId: localSnapshot.activePageId,
+          documentTitle: localSnapshot.documentTitle,
+          persistenceMode: state?.persistenceMode ?? 'local',
           savedBoards: normalizeSavedBoards(state?.savedBoards),
-          activeBoardId: state?.activeBoardId ?? null,
-          theme: state?.theme ?? 'light',
-          layoutMode: state?.layoutMode ?? 'horizontal',
-          splitRatio: state?.splitRatio ?? 0.28,
-          panelMode: state?.panelMode ?? 'split',
-          docsNavigatorCollapsed: state?.docsNavigatorCollapsed ?? false,
+          localSnapshot,
+          localActiveBoardId: state?.localActiveBoardId ?? state?.activeBoardId ?? createWorkingBoardId(),
+          cloudWorkspace: null,
+          activeBoardId: state?.activeBoardId ?? createWorkingBoardId(),
+          activeCloudBoardId: state?.activeCloudBoardId ?? null,
+          theme: localSnapshot.theme,
+          layoutMode: localSnapshot.layoutMode,
+          splitRatio: localSnapshot.splitRatio,
+          panelMode: localSnapshot.panelMode,
+          docsNavigatorCollapsed: localSnapshot.docsNavigatorCollapsed,
           docsEditorChromeCollapsed: state?.docsEditorChromeCollapsed ?? false,
+          activeSurface: 'whiteboard',
           toolDefaults: state?.toolDefaults ?? makeInitialToolDefaults(),
-          viewState: state?.viewState ?? makeInitialViewState(),
+          viewState: localSnapshot.viewState,
         };
       },
-      partialize: (state) => ({
-        elements: state.elements,
-        pages: state.pages,
-        activePageId: state.activePageId,
-        documentTitle: state.documentTitle,
+      partialize: (state) => {
+        const persistedSnapshot = state.persistenceMode === 'cloud'
+          ? state.localSnapshot
+          : createBoardSnapshot(state);
+
+        return {
+        elements: persistedSnapshot.elements,
+        pages: persistedSnapshot.pages,
+        activePageId: persistedSnapshot.activePageId,
+        documentTitle: persistedSnapshot.documentTitle,
+        persistenceMode: state.persistenceMode,
         savedBoards: state.savedBoards,
-        activeBoardId: state.activeBoardId,
-        theme: state.theme,
-        layoutMode: state.layoutMode,
-        splitRatio: state.splitRatio,
-        panelMode: state.panelMode,
-        docsNavigatorCollapsed: state.docsNavigatorCollapsed,
+        localSnapshot: state.localSnapshot,
+        localActiveBoardId: state.localActiveBoardId,
+        activeBoardId: state.persistenceMode === 'cloud' ? state.localActiveBoardId : state.activeBoardId,
+        activeCloudBoardId: state.activeCloudBoardId,
+        theme: persistedSnapshot.theme,
+        layoutMode: persistedSnapshot.layoutMode,
+        splitRatio: persistedSnapshot.splitRatio,
+        panelMode: persistedSnapshot.panelMode,
+        docsNavigatorCollapsed: persistedSnapshot.docsNavigatorCollapsed,
         docsEditorChromeCollapsed: state.docsEditorChromeCollapsed,
         toolDefaults: state.toolDefaults,
-        viewState: state.viewState,
-      }),
+        viewState: persistedSnapshot.viewState,
+      };
+      },
     }
   )
 );
