@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Synth KV Handoff</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{--cyan:#47bfff;--violet:#7e14ff;--violet-soft:#863bff;--lilac:#ede6ff;--slate:#0f172a;--light:#eef3fb;--dark:#030712;--r1:32px;--r2:22px;--r3:16px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:"Space Grotesk",sans-serif;background:linear-gradient(180deg,#f7fbff,#eef3fb);color:#0f172a;padding:32px 18px}
+    main{max-width:1480px;margin:0 auto;display:grid;gap:22px}
+    h1{font-size:clamp(30px,4vw,50px);line-height:.95;letter-spacing:-.05em}
+    p{line-height:1.6}
+    .eyebrow,.tag,.mini{font-family:"JetBrains Mono",monospace;text-transform:uppercase}
+    .eyebrow{font-size:12px;letter-spacing:.12em;color:rgba(15,23,42,.6)}
+    .intro{display:grid;gap:12px;max-width:900px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+    .meta{display:flex;justify-content:space-between;gap:12px;padding:0 8px;font-size:14px;font-weight:700;color:rgba(15,23,42,.72)}
+    .tag{font-size:11px;letter-spacing:.08em}
+    .poster{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:36px;padding:28px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.02fr);gap:24px;box-shadow:0 30px 90px rgba(15,23,42,.2)}
+    .poster::before,.poster::after{content:"";position:absolute;filter:blur(54px);pointer-events:none}
+    .light{background:radial-gradient(circle at 14% 14%,rgba(125,211,252,.28),transparent 24%),radial-gradient(circle at 82% 14%,rgba(196,181,253,.2),transparent 24%),linear-gradient(180deg,#f7fbff,#eef3fb);border:1px solid rgba(148,163,184,.26)}
+    .light::before{width:34%;height:40%;left:-8%;top:4%;background:rgba(71,191,255,.2)}
+    .light::after{width:32%;height:38%;right:-6%;bottom:-4%;background:rgba(126,20,255,.16)}
+    .dark{background:radial-gradient(circle at 14% 14%,rgba(56,189,248,.16),transparent 24%),radial-gradient(circle at 82% 14%,rgba(129,140,248,.14),transparent 24%),radial-gradient(circle at 78% 86%,rgba(244,114,182,.09),transparent 20%),linear-gradient(180deg,#08101d,#030712);border:1px solid rgba(148,163,184,.18);color:#f8fafc}
+    .dark::before{width:34%;height:40%;left:-8%;top:4%;background:rgba(71,191,255,.14)}
+    .dark::after{width:30%;height:36%;right:-5%;bottom:-5%;background:rgba(126,20,255,.14)}
+    .copy,.scene{position:relative;z-index:1}
+    .copy{display:flex;flex-direction:column;justify-content:space-between;gap:18px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand img{width:42px;height:42px;border-radius:14px}
+    .brand strong{display:block;font-size:14px;letter-spacing:.12em;text-transform:uppercase}
+    .brand span{font-size:12px;opacity:.72}
+    .hero{display:grid;gap:14px}
+    .hero h2{font-size:clamp(32px,3.8vw,56px);line-height:.94;letter-spacing:-.05em;max-width:8.5ch}
+    .hero p{font-size:clamp(14px,1.25vw,18px);max-width:30ch;opacity:.82}
+    .chips,.swatches{display:flex;flex-wrap:wrap;gap:10px}
+    .chip,.swatch{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:0 14px;border-radius:999px;border:1px solid}
+    .light .chip,.swatch{background:rgba(255,255,255,.7);border-color:rgba(148,163,184,.22);color:#14213d}
+    .dark .chip{background:rgba(9,15,28,.66);border-color:rgba(148,163,184,.18);color:#e2e8f0}
+    .swatch{font-family:"JetBrains Mono",monospace;font-size:11px}
+    .dot{width:12px;height:12px;border-radius:50%}
+    .scene{border-radius:28px;overflow:hidden}
+    .scene::before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle,currentColor 1.1px,transparent 1.1px);background-size:24px 24px;opacity:.18;mask-image:linear-gradient(180deg,#000 0%,transparent 92%)}
+    .light .scene{color:rgba(148,163,184,.9)}
+    .dark .scene{color:rgba(148,163,184,.7)}
+    .glass{position:absolute;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-radius:28px;overflow:hidden}
+    .light .glass{background:rgba(255,255,255,.62);border:1px solid rgba(148,163,184,.24);box-shadow:0 18px 44px rgba(15,23,42,.1)}
+    .dark .glass{background:rgba(9,15,28,.62);border:1px solid rgba(148,163,184,.16);box-shadow:0 18px 44px rgba(0,0,0,.36)}
+    .dock{left:7%;top:8%;width:56%;height:18%;padding:12px 14px;display:grid;gap:10px}
+    .dock-row,.tools{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .tools{justify-content:flex-start}
+    .tool{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:600 13px "JetBrains Mono",monospace}
+    .light .tool{background:rgba(255,255,255,.84);border:1px solid rgba(148,163,184,.2);color:#0f172a}
+    .dark .tool{background:rgba(15,23,42,.84);border:1px solid rgba(148,163,184,.18);color:#f8fafc}
+    .tool.active{background:linear-gradient(135deg,var(--cyan),var(--violet));border-color:transparent;color:#fff}
+    .doc{left:8%;bottom:10%;width:48%;height:56%;padding:22px;display:grid;align-content:start;gap:12px;transform:rotate(-3deg)}
+    .doc strong{font-size:11px;letter-spacing:.12em;opacity:.68}
+    .doc h3{font-size:clamp(18px,1.7vw,28px);line-height:1.05;letter-spacing:-.04em}
+    .line{height:10px;border-radius:999px}
+    .light .line{background:linear-gradient(90deg,rgba(15,23,42,.12),rgba(15,23,42,.04))}
+    .dark .line{background:linear-gradient(90deg,rgba(248,250,252,.15),rgba(248,250,252,.06))}
+    .line.s{width:62%}.line.m{width:78%}.line.l{width:100%}
+    .code{margin-top:4px;padding:14px;border-radius:18px;font:400 12px/1.55 "JetBrains Mono",monospace}
+    .light .code{background:#0f172a;color:#eff6ff}
+    .dark .code{background:#020617;color:#e2e8f0}
+    .board{right:6%;top:16%;width:56%;height:62%;transform:rotate(4deg)}
+    .board-inner{position:absolute;inset:0;padding:18px;background:radial-gradient(circle at 16% 12%,rgba(71,191,255,.14),transparent 24%),radial-gradient(circle at 82% 18%,rgba(126,20,255,.12),transparent 22%)}
+    .board-inner::before{content:"";position:absolute;inset:0;background-image:radial-gradient(circle,currentColor 1px,transparent 1px);background-size:22px 22px;opacity:.4}
+    .light .board-inner{color:rgba(148,163,184,.72)}
+    .dark .board-inner{color:rgba(148,163,184,.52)}
+    .sticky,.note,.chart,.selection{position:absolute;border-radius:18px}
+    .sticky{left:12%;top:16%;width:34%;height:22%;background:linear-gradient(180deg,rgba(255,248,214,.98),rgba(250,226,169,.92));box-shadow:0 16px 28px rgba(15,23,42,.16)}
+    .note{right:12%;bottom:14%;width:28%;height:18%;background:linear-gradient(135deg,var(--cyan),var(--violet));box-shadow:0 16px 30px rgba(126,20,255,.24)}
+    .chart{left:26%;bottom:18%;width:40%;height:28%;padding:14px;background:rgba(255,255,255,.9);box-shadow:0 20px 32px rgba(15,23,42,.16)}
+    .dark .chart{background:rgba(8,15,28,.92);box-shadow:0 20px 32px rgba(0,0,0,.28)}
+    .bars{display:flex;align-items:flex-end;gap:10px;height:100%}
+    .bar{flex:1;border-radius:999px 999px 8px 8px;background:linear-gradient(180deg,var(--cyan),var(--violet))}
+    .bar:nth-child(1){height:46%}.bar:nth-child(2){height:72%}.bar:nth-child(3){height:58%}.bar:nth-child(4){height:88%}
+    .selection{inset:20% 18% 20% 18%;border:2px solid rgba(71,191,255,.88);box-shadow:0 0 0 1px rgba(126,20,255,.34),inset 0 0 0 1px rgba(255,255,255,.2)}
+    .notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .note-card{padding:18px 20px;border-radius:20px;background:rgba(255,255,255,.74);border:1px solid rgba(148,163,184,.22);box-shadow:0 20px 48px rgba(15,23,42,.12);display:grid;gap:8px}
+    .note-card strong{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(15,23,42,.62)}
+    .note-card p{font-size:14px;color:rgba(15,23,42,.74)}
+    @media (max-width:1120px){.grid,.notes,.poster{grid-template-columns:1fr}.scene{min-height:420px}}
+    @media (max-width:720px){body{padding:20px 14px}.poster{padding:18px;border-radius:24px}.scene{min-height:360px}}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="intro">
+      <span class="eyebrow">Synth / KV handoff</span>
+      <h1>Versao branca e versao preta prontas para portar.</h1>
+      <p>O visual abaixo resume a linguagem atual do produto: glassmorphism leve, glow ciano-violeta da marca, documentacao de um lado e whiteboard do outro. Use como referencia visual e combine com os tokens do arquivo <code>kv-tokens.json</code>.</p>
+    </section>
+
+    <section class="grid">
+      <article>
+        <div class="meta"><span>KV 01 / White</span><span class="tag">light theme</span></div>
+        <div class="poster light">
+          <div class="copy">
+            <div class="brand">
+              <img src="figmadoc/public/favicon.svg" alt="Synth mark" />
+              <div><strong>Synth</strong><span>Documentation + Whiteboard</span></div>
+            </div>
+            <div class="hero">
+              <span class="eyebrow">Versao branca</span>
+              <h2>Build ideas on a calm, luminous canvas.</h2>
+              <p>Base clara, superficies em vidro levemente fosco, grid sutil e acentos ciano-violeta saindo do centro da marca.</p>
+            </div>
+            <div class="chips">
+              <span class="chip">Soft glass</span>
+              <span class="chip">Slate ink</span>
+              <span class="chip">Cyan + violet glow</span>
+              <span class="chip">Calm grid</span>
+            </div>
+          </div>
+          <div class="scene">
+            <div class="glass dock">
+              <div class="dock-row">
+                <div class="tools"><div class="tool active">S</div><div class="tool">T</div><div class="tool">C</div><div class="tool">I</div></div>
+                <span class="chip">Split view</span>
+              </div>
+              <div class="dock-row"><span class="eyebrow">header / glass / 24px blur</span></div>
+            </div>
+            <div class="glass doc">
+              <strong>Documentation</strong>
+              <h3>Organize context next to the canvas.</h3>
+              <div class="line l"></div><div class="line m"></div><div class="line s"></div>
+              <div class="code">const board = {<br>&nbsp;&nbsp;theme: "light",<br>&nbsp;&nbsp;mode: "split"<br>};</div>
+            </div>
+            <div class="glass board">
+              <div class="board-inner">
+                <div class="sticky"></div>
+                <div class="note"></div>
+                <div class="chart"><div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div></div>
+                <div class="selection"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <div class="meta"><span>KV 02 / Black</span><span class="tag">dark theme</span></div>
+        <div class="poster dark">
+          <div class="copy">
+            <div class="brand">
+              <img src="figmadoc/public/favicon.svg" alt="Synth mark" />
+              <div><strong>Synth</strong><span>Documentation + Whiteboard</span></div>
+            </div>
+            <div class="hero">
+              <span class="eyebrow">Versao preta</span>
+              <h2>Build ideas on a sharp, neon canvas.</h2>
+              <p>Fundo grafite profundo, vidro escuro, contraste alto e o mesmo glow da marca aparecendo com mais intensidade nas bordas e nos paineis.</p>
+            </div>
+            <div class="chips">
+              <span class="chip">Dark glass</span>
+              <span class="chip">High contrast</span>
+              <span class="chip">Electric glow</span>
+              <span class="chip">Deep graphite</span>
+            </div>
+          </div>
+          <div class="scene">
+            <div class="glass dock">
+              <div class="dock-row">
+                <div class="tools"><div class="tool active">S</div><div class="tool">T</div><div class="tool">C</div><div class="tool">I</div></div>
+                <span class="chip">Split view</span>
+              </div>
+              <div class="dock-row"><span class="eyebrow">header / glass / 24px blur</span></div>
+            </div>
+            <div class="glass doc">
+              <strong>Documentation</strong>
+              <h3>Organize context next to the canvas.</h3>
+              <div class="line l"></div><div class="line m"></div><div class="line s"></div>
+              <div class="code">const board = {<br>&nbsp;&nbsp;theme: "dark",<br>&nbsp;&nbsp;mode: "split"<br>};</div>
+            </div>
+            <div class="glass board">
+              <div class="board-inner">
+                <div class="sticky"></div>
+                <div class="note"></div>
+                <div class="chart"><div class="bars"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div></div>
+                <div class="selection"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="notes">
+      <article class="note-card">
+        <strong>Brand colors</strong>
+        <div class="swatches">
+          <span class="swatch"><span class="dot" style="background:#47bfff"></span>#47BFFF</span>
+          <span class="swatch"><span class="dot" style="background:#7e14ff"></span>#7E14FF</span>
+          <span class="swatch"><span class="dot" style="background:#863bff"></span>#863BFF</span>
+          <span class="swatch"><span class="dot" style="background:#ede6ff"></span>#EDE6FF</span>
+        </div>
+      </article>
+      <article class="note-card">
+        <strong>Shared structure</strong>
+        <p>Sempre manter a dupla documentacao + whiteboard, uma camada de vidro para navegacao e um grid pontilhado no canvas. O brilho da marca fica no fundo, nao em todos os elementos.</p>
+      </article>
+      <article class="note-card">
+        <strong>Implementation hint</strong>
+        <p>Se a outra ferramenta trabalhar por prompt, reutilize os prompts do arquivo <code>KV-Handoff.md</code>. Se trabalhar com tokens, use diretamente o arquivo <code>kv-tokens.json</code>.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

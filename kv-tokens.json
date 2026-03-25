@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "name": "Synth KV handoff",
+    "version": "1.0.0",
+    "source": {
+      "brandMark": "figmadoc/public/favicon.svg",
+      "logoImage": "figmadoc/public/logo.png",
+      "uiTheme": "figmadoc/src/index.css"
+    }
+  },
+  "brand": {
+    "name": "Synth",
+    "descriptor": "Documentation + Whiteboard",
+    "palette": {
+      "cyan": "#47BFFF",
+      "violet": "#7E14FF",
+      "violetSoft": "#863BFF",
+      "lilacGlow": "#EDE6FF"
+    },
+    "typography": {
+      "display": "Space Grotesk",
+      "mono": "JetBrains Mono"
+    },
+    "composition": {
+      "ratio": "16:9",
+      "coreScene": [
+        "floating glass header",
+        "documentation panel",
+        "whiteboard panel with dotted grid",
+        "cyan-violet background glow",
+        "one highlighted selection state"
+      ]
+    }
+  },
+  "themes": {
+    "light": {
+      "primary": "#111827",
+      "primaryContrast": "#F8FBFF",
+      "bgPrimary": "rgba(255, 255, 255, 0.68)",
+      "bgSecondary": "#EEF3FB",
+      "bgTertiary": "rgba(15, 23, 42, 0.06)",
+      "bgElevated": "rgba(255, 255, 255, 0.86)",
+      "surfaceElevated": "rgba(255, 255, 255, 0.76)",
+      "surfaceFloating": "rgba(255, 255, 255, 0.92)",
+      "textPrimary": "#0F172A",
+      "textSecondary": "rgba(15, 23, 42, 0.74)",
+      "textMuted": "rgba(15, 23, 42, 0.46)",
+      "borderColor": "rgba(148, 163, 184, 0.28)",
+      "borderStrong": "rgba(15, 23, 42, 0.84)",
+      "codeBg": "#0F172A",
+      "codeFg": "#EFF6FF",
+      "canvasBg": "#EDF2FB",
+      "docCanvasBg": "linear-gradient(180deg, rgba(240, 245, 255, 0.95), rgba(236, 242, 250, 0.9))",
+      "docSurface": "rgba(255, 255, 255, 0.78)",
+      "docToolbarBg": "rgba(255, 255, 255, 0.62)",
+      "docInk": "#14213D",
+      "docInkSoft": "rgba(20, 33, 61, 0.74)",
+      "docBorder": "rgba(148, 163, 184, 0.24)",
+      "docShadow": "0 28px 90px rgba(71, 85, 105, 0.18)",
+      "gridColor": "rgba(148, 163, 184, 0.18)",
+      "glassBg": "rgba(255, 255, 255, 0.58)",
+      "glassBorder": "rgba(148, 163, 184, 0.26)",
+      "glassBlur": "blur(24px)",
+      "bgPanel": "rgba(255, 255, 255, 0.66)",
+      "appGradient1": "rgba(125, 211, 252, 0.28)",
+      "appGradient2": "rgba(196, 181, 253, 0.2)",
+      "appGradient3": "rgba(251, 191, 183, 0.2)",
+      "pointerGlowCenter": "rgba(15, 23, 42, 0.12)",
+      "pointerGlowMid": "rgba(255, 255, 255, 0.08)",
+      "pointerGlowBlend": "multiply",
+      "shadowMd": "0 18px 44px rgba(15, 23, 42, 0.1)",
+      "shadowLg": "0 30px 80px rgba(15, 23, 42, 0.18)"
+    },
+    "dark": {
+      "primary": "#F8FAFC",
+      "primaryContrast": "#020617",
+      "bgPrimary": "rgba(12, 18, 32, 0.72)",
+      "bgSecondary": "#030712",
+      "bgTertiary": "rgba(255, 255, 255, 0.06)",
+      "bgElevated": "rgba(8, 15, 28, 0.88)",
+      "surfaceElevated": "rgba(10, 18, 32, 0.82)",
+      "surfaceFloating": "rgba(15, 23, 42, 0.94)",
+      "textPrimary": "#F8FAFC",
+      "textSecondary": "rgba(226, 232, 240, 0.82)",
+      "textMuted": "rgba(148, 163, 184, 0.72)",
+      "borderColor": "rgba(148, 163, 184, 0.18)",
+      "borderStrong": "rgba(248, 250, 252, 0.84)",
+      "codeBg": "#020617",
+      "codeFg": "#E2E8F0",
+      "canvasBg": "#050B16",
+      "docCanvasBg": "linear-gradient(180deg, rgba(6, 11, 24, 0.96), rgba(10, 18, 32, 0.98))",
+      "docSurface": "rgba(9, 15, 28, 0.78)",
+      "docToolbarBg": "rgba(7, 13, 24, 0.72)",
+      "docInk": "#F8FAFC",
+      "docInkSoft": "rgba(226, 232, 240, 0.76)",
+      "docBorder": "rgba(148, 163, 184, 0.16)",
+      "docShadow": "0 34px 90px rgba(0, 0, 0, 0.45)",
+      "gridColor": "rgba(148, 163, 184, 0.16)",
+      "glassBg": "rgba(9, 15, 28, 0.62)",
+      "glassBorder": "rgba(148, 163, 184, 0.16)",
+      "glassBlur": "blur(24px)",
+      "bgPanel": "rgba(7, 13, 24, 0.78)",
+      "appGradient1": "rgba(56, 189, 248, 0.12)",
+      "appGradient2": "rgba(129, 140, 248, 0.12)",
+      "appGradient3": "rgba(244, 114, 182, 0.08)",
+      "pointerGlowCenter": "rgba(186, 230, 253, 0.07)",
+      "pointerGlowMid": "rgba(56, 189, 248, 0.025)",
+      "pointerGlowBlend": "screen",
+      "shadowMd": "0 18px 44px rgba(0, 0, 0, 0.36)",
+      "shadowLg": "0 30px 90px rgba(0, 0, 0, 0.52)"
+    }
+  },
+  "kv": {
+    "sharedRules": [
+      "keep the split-view narrative: documentation + whiteboard",
+      "use glass panels with 24px blur",
+      "use dotted grid only inside the canvas layer",
+      "keep glow concentrated in the background and active states",
+      "show at least one note, one chart, one selected object"
+    ],
+    "lightPrompt": "Create a 16:9 key visual for Synth, a documentation plus whiteboard product. Use a calm white interface with pale blue and lilac atmospheric gradients, frosted glass panels, subtle dotted grid, dark slate typography, and a cyan-violet glow inspired by the logo. Show a split composition with a documentation card on the left and a whiteboard card on the right, including a sticky note, a chart card, and one selected object. Premium, modern, clean, luminous, high-end SaaS brand aesthetic.",
+    "darkPrompt": "Create a 16:9 key visual for Synth, a documentation plus whiteboard product. Use a deep graphite black interface with cyan and electric violet glow, dark glass panels, high contrast typography, subtle dotted grid, and soft neon bloom around the brand mark. Show a split composition with a documentation card on the left and a whiteboard card on the right, including a sticky note, a chart card, and one selected object. Premium, modern, sharp, futuristic SaaS brand aesthetic."
+  }
+}
