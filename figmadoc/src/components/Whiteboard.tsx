@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { buildArrowPathDefinition, getArrowBounds, getArrowRenderablePoints } from '../lib/arrows';
+import { buildArrowPathDefinition, getArrowBounds, getArrowRenderablePoints, resolveArrowLineStyle } from '../lib/arrows';
 import { createDefaultDataSheet, serializeDataSheet } from '../lib/dataSheet';
 import { useStore } from '../store/useStore';
 import { parseElementsFromClipboard } from '../lib/whiteboardData';
@@ -46,14 +46,7 @@ function getSnapTarget(
 
   for (const el of elements) {
     if (el.type === 'arrow' || el.type === 'pen') continue;
-    const cx = el.x + el.width / 2;
-    const cy = el.y + el.height / 2;
-    const anchors: Point[] = [
-      { x: cx, y: el.y },                   // top center
-      { x: cx, y: el.y + el.height },        // bottom center
-      { x: el.x, y: cy },                    // left center
-      { x: el.x + el.width, y: cy },         // right center
-    ];
+    const anchors = getConnectionAnchors(el);
     for (const anchor of anchors) {
       const dist = Math.hypot(point.x - anchor.x, point.y - anchor.y);
       if (dist <= threshold && (!best || dist < best.dist)) {
@@ -202,7 +195,7 @@ export function Whiteboard() {
 
       const state = useStore.getState();
       const draggableElements = state.elements.filter(
-        (candidate) => state.selectedIds.includes(candidate.id) && !candidate.locked
+        (candidate) => state.selectedIds.includes(candidate.id) && !candidate.locked && candidate.type !== 'arrow'
       );
 
       if (draggableElements.length === 0) return;
@@ -568,7 +561,7 @@ export function Whiteboard() {
               point.y <= combinedBounds.bottom
             ) {
               // Start drag of selected elements instead of selection box
-              const draggableElements = selectedElements.filter((e) => !e.locked);
+              const draggableElements = selectedElements.filter((e) => !e.locked && e.type !== 'arrow');
               if (draggableElements.length > 0) {
                 const startX = event.clientX;
                 const startY = event.clientY;
@@ -768,6 +761,9 @@ export function Whiteboard() {
 
       if (activeTool === 'arrow') {
         const snapTarget = getSnapTarget(point, elements);
+        if (!snapTarget) {
+          return;
+        }
         const startPoint = snapTarget?.snappedPoint ?? point;
         setDrawingArrow({
           start: startPoint,
@@ -962,7 +958,16 @@ export function Whiteboard() {
 
       if (drawingArrow) {
         const distance = Math.hypot(drawingArrow.end.x - drawingArrow.start.x, drawingArrow.end.y - drawingArrow.start.y);
-        if (distance > 6) {
+        if (
+          distance > 6 &&
+          drawingArrow.startElementId &&
+          drawingArrow.endElementId
+        ) {
+          const resolvedLineStyle = resolveArrowLineStyle(
+            toolDefaults.arrow.lineStyle,
+            drawingArrow.startElementId,
+            drawingArrow.endElementId,
+          );
           const id = addElement({
             type: 'arrow',
             x: 0,
@@ -975,7 +980,7 @@ export function Whiteboard() {
               strokeWidth: toolDefaults.arrow.strokeWidth,
               startArrowHead: toolDefaults.arrow.startArrowHead,
               endArrowHead: toolDefaults.arrow.endArrowHead,
-              lineStyle: toolDefaults.arrow.lineStyle,
+              lineStyle: resolvedLineStyle,
               curveOffset: toolDefaults.arrow.curveOffset,
               startElementId: drawingArrow.startElementId,
               endElementId: drawingArrow.endElementId,
@@ -1039,27 +1044,35 @@ export function Whiteboard() {
       if (event.button !== 0) return;
       event.stopPropagation();
       setContextMenu(null);
-      lastPointerCanvasRef.current = toCanvas(event.clientX, event.clientY);
+      const pointerPoint = toCanvas(event.clientX, event.clientY);
+      lastPointerCanvasRef.current = pointerPoint;
+      const interactionElement =
+        element.type === 'arrow'
+          ? findPreferredInteractionElement(elements, element, pointerPoint)
+          : element;
 
       if (activeTool === 'eraser') {
         historyPush();
         erasedIdsRef.current.clear();
         setIsErasing(true);
-        eraseAtPoint(lastPointerCanvasRef.current ?? { x: element.x + element.width / 2, y: element.y + element.height / 2 });
+        eraseAtPoint(lastPointerCanvasRef.current ?? { x: interactionElement.x + interactionElement.width / 2, y: interactionElement.y + interactionElement.height / 2 });
         wrapperRef.current?.setPointerCapture(event.pointerId);
         return;
       }
 
       if (activeTool === 'arrow') {
+        if (interactionElement.type === 'arrow') {
+          return;
+        }
         const startPoint = getAnchorForElement(
-          element,
-          lastPointerCanvasRef.current ?? { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+          interactionElement,
+          lastPointerCanvasRef.current ?? { x: interactionElement.x + interactionElement.width / 2, y: interactionElement.y + interactionElement.height / 2 }
         );
         setDrawingArrow({
           start: startPoint,
           end: startPoint,
-          startElementId: element.id,
-          endElementId: element.id,
+          startElementId: interactionElement.id,
+          endElementId: interactionElement.id,
         });
         wrapperRef.current?.setPointerCapture(event.pointerId);
         return;
@@ -1069,22 +1082,22 @@ export function Whiteboard() {
 
       const additive = event.shiftKey || event.ctrlKey || event.metaKey;
       if (additive) {
-        selectElement(element.id, true);
+        selectElement(interactionElement.id, true);
         return;
       }
 
       const state = useStore.getState();
-      const directSelectionIds = element.groupId
-        ? state.elements.filter((candidate) => candidate.groupId === element.groupId).map((candidate) => candidate.id)
-        : [element.id];
-      const dragIds = state.selectedIds.includes(element.id) ? state.selectedIds : directSelectionIds;
+      const directSelectionIds = interactionElement.groupId
+        ? state.elements.filter((candidate) => candidate.groupId === interactionElement.groupId).map((candidate) => candidate.id)
+        : [interactionElement.id];
+      const dragIds = state.selectedIds.includes(interactionElement.id) ? state.selectedIds : directSelectionIds;
 
-      if (!state.selectedIds.includes(element.id)) {
+      if (!state.selectedIds.includes(interactionElement.id)) {
         setSelectedIds(directSelectionIds);
       }
 
       const draggableElements = state.elements.filter(
-        (candidate) => dragIds.includes(candidate.id) && !candidate.locked
+        (candidate) => dragIds.includes(candidate.id) && !candidate.locked && candidate.type !== 'arrow'
       );
       if (draggableElements.length === 0) return;
 
@@ -1160,7 +1173,7 @@ export function Whiteboard() {
 
       startCapturedDrag(captureTarget, event.pointerId, onMove, onUp);
     },
-    [activeTool, eraseAtPoint, historyPush, selectElement, setSelectedIds, startCapturedDrag, toCanvas, updateElements]
+    [activeTool, elements, eraseAtPoint, historyPush, selectElement, setSelectedIds, startCapturedDrag, toCanvas, updateElements]
   );
 
   const onElementContextMenu = useCallback(
@@ -1199,6 +1212,16 @@ export function Whiteboard() {
 
   const contextElement = contextMenu
     ? elements.find((element) => element.id === contextMenu.elementId)
+    : null;
+  const singleSelectedElement = selectedIds.length === 1
+    ? elements.find((element) => element.id === selectedIds[0]) ?? null
+    : null;
+  const selectedTextHint = singleSelectedElement && (
+    singleSelectedElement.type === 'text' ||
+    singleSelectedElement.type === 'sticky' ||
+    singleSelectedElement.type === 'shape'
+  )
+    ? 'Drag to move | Double-click to edit text'
     : null;
 
   // Sort: pen elements always above image elements, then by zIndex
@@ -1318,18 +1341,35 @@ export function Whiteboard() {
                   <polygon points="0 0, 8 3, 0 6" fill="var(--text-primary)" />
                 </marker>
               </defs>
-              <path
-                d={buildArrowPathDefinition({
-                  points: [drawingArrow.start, drawingArrow.end],
-                  lineStyle: toolDefaults.arrow.lineStyle,
-                  curveOffset: toolDefaults.arrow.curveOffset,
-                })}
-                fill="none"
-                stroke="var(--text-primary)"
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                markerEnd={toolDefaults.arrow.endArrowHead === 'none' ? undefined : 'url(#arrow-preview)'}
-              />
+              {(() => {
+                const startConnectedElement = drawingArrow.startElementId
+                  ? elements.find((element) => element.id === drawingArrow.startElementId)
+                  : undefined;
+                const endConnectedElement = drawingArrow.endElementId
+                  ? elements.find((element) => element.id === drawingArrow.endElementId)
+                  : undefined;
+                const previewLineStyle = resolveArrowLineStyle(
+                  toolDefaults.arrow.lineStyle,
+                  drawingArrow.startElementId,
+                  drawingArrow.endElementId,
+                );
+                return (
+                  <path
+                    d={buildArrowPathDefinition({
+                      points: [drawingArrow.start, drawingArrow.end],
+                      lineStyle: previewLineStyle,
+                      curveOffset: toolDefaults.arrow.curveOffset,
+                      startBounds: startConnectedElement ? getSimpleBounds(startConnectedElement) : undefined,
+                      endBounds: endConnectedElement ? getSimpleBounds(endConnectedElement) : undefined,
+                    })}
+                    fill="none"
+                    stroke="var(--text-primary)"
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    markerEnd={toolDefaults.arrow.endArrowHead === 'none' ? undefined : 'url(#arrow-preview)'}
+                  />
+                );
+              })()}
               <circle cx={drawingArrow.start.x} cy={drawingArrow.start.y} r={3} fill="var(--primary)" />
             </svg>
           )}
@@ -1450,7 +1490,6 @@ export function Whiteboard() {
                   key={element.id}
                   element={element}
                   selected={isSelected}
-                  zoom={viewState.zoom}
                   onPointerDown={(event) => onElementPointerDown(event, element)}
                 />
               );
@@ -1537,6 +1576,9 @@ export function Whiteboard() {
               <span style={{ color: 'var(--text-secondary)' }}>
                 {selectedIds.length} selected | Ctrl+G group | L lock | Ctrl+C/V copy and paste
               </span>
+            )}
+            {selectedTextHint && (
+              <span style={{ color: 'var(--text-secondary)' }}>{selectedTextHint}</span>
             )}
           </span>
           <span style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -1675,6 +1717,19 @@ function computeConnectedArrowUpdates(
     }
 
     if (changed) {
+      const resolvedLineStyle = resolveArrowLineStyle(
+        props.lineStyle,
+        props.startElementId,
+        props.endElementId,
+      );
+      if (
+        resolvedLineStyle === 'orthogonal' &&
+        props.startElementId &&
+        props.endElementId &&
+        points.length > 2
+      ) {
+        points = [points[0], points[points.length - 1]];
+      }
       updates.push({
         id: el.id,
         updates: { properties: { ...props, points } },
@@ -1686,14 +1741,7 @@ function computeConnectedArrowUpdates(
 }
 
 function getAnchorForElement(el: WhiteboardElement, nearPoint: Point): Point {
-  const cx = el.x + el.width / 2;
-  const cy = el.y + el.height / 2;
-  const anchors: Point[] = [
-    { x: cx, y: el.y },
-    { x: cx, y: el.y + el.height },
-    { x: el.x, y: cy },
-    { x: el.x + el.width, y: cy },
-  ];
+  const anchors = getConnectionAnchors(el);
   let best = anchors[0];
   let bestDist = Infinity;
   for (const anchor of anchors) {
@@ -1704,6 +1752,27 @@ function getAnchorForElement(el: WhiteboardElement, nearPoint: Point): Point {
     }
   }
   return best;
+}
+
+function getConnectionAnchors(element: WhiteboardElement): Point[] {
+  const padding = getConnectionPadding(element);
+  const left = element.x - padding;
+  const top = element.y - padding;
+  const width = element.width + padding * 2;
+  const height = element.height + padding * 2;
+  const xs = [left + width * 0.18, left + width * 0.5, left + width * 0.82];
+  const ys = [top + height * 0.18, top + height * 0.5, top + height * 0.82];
+  return [
+    ...xs.map((x) => ({ x, y: top })),
+    ...xs.map((x) => ({ x, y: top + height })),
+    ...ys.map((y) => ({ x: left, y })),
+    ...ys.map((y) => ({ x: left + width, y })),
+  ];
+}
+
+function getConnectionPadding(element: WhiteboardElement) {
+  if (element.type === 'text') return 16;
+  return 4;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1758,7 +1827,14 @@ function getElementBounds(element: WhiteboardElement) {
       y: point.y + element.y,
     }));
     return element.type === 'arrow'
-      ? getArrowBounds({ points: translatedPoints, lineStyle: element.properties.lineStyle }, strokePadding)
+      ? getArrowBounds({
+          points: translatedPoints,
+          lineStyle: resolveArrowLineStyle(
+            element.properties.lineStyle,
+            element.properties.startElementId,
+            element.properties.endElementId,
+          ),
+        }, strokePadding)
       : getPointBounds(translatedPoints, strokePadding);
   }
 
@@ -1933,7 +2009,11 @@ function elementContainsPoint(element: WhiteboardElement, point: Point) {
     const translatedPoints = (element.type === 'arrow'
       ? getArrowRenderablePoints({
           points: element.properties.points,
-          lineStyle: element.properties.lineStyle,
+          lineStyle: resolveArrowLineStyle(
+            element.properties.lineStyle,
+            element.properties.startElementId,
+            element.properties.endElementId,
+          ),
         })
       : element.properties.points
     ).map((candidate) => ({
@@ -1974,6 +2054,40 @@ function distancePointToSegment(point: Point, start: Point, end: Point) {
   };
 
   return Math.hypot(point.x - projection.x, point.y - projection.y);
+}
+
+function getSimpleBounds(element: WhiteboardElement) {
+  const padding = getConnectionPadding(element);
+  return {
+    left: element.x - padding,
+    top: element.y - padding,
+    right: element.x + element.width + padding,
+    bottom: element.y + element.height + padding,
+  };
+}
+
+function findPreferredInteractionElement(
+  elements: WhiteboardElement[],
+  currentElement: WhiteboardElement,
+  point: Point,
+) {
+  const candidates = [...elements]
+    .filter((candidate) => candidate.id !== currentElement.id && candidate.type !== 'arrow' && candidate.type !== 'pen')
+    .filter((candidate) => elementContainsPoint(candidate, point))
+    .sort((a, b) => {
+      const priorityDelta = getInteractionPriority(b) - getInteractionPriority(a);
+      if (priorityDelta !== 0) return priorityDelta;
+      return b.zIndex - a.zIndex;
+    });
+
+  return candidates[0] ?? currentElement;
+}
+
+function getInteractionPriority(element: WhiteboardElement) {
+  if (element.type === 'text') return 4;
+  if (element.type === 'sticky') return 3;
+  if (element.type === 'shape') return 2;
+  return 1;
 }
 
 function intersectsBox(

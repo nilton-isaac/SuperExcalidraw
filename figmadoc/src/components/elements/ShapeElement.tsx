@@ -16,6 +16,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(element.properties.text ?? '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastPressRef = useRef<{ time: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     setText(element.properties.text ?? '');
@@ -47,14 +48,53 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
-  const handlePointerDown = useCallback((event: React.PointerEvent) => onPointerDown(event), [onPointerDown]);
-  const handleClick = useCallback(
+  useEffect(() => {
+    if (!selected || editing) {
+      lastPressRef.current = null;
+    }
+  }, [editing, selected]);
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      const now = Date.now();
+      const previous = lastPressRef.current;
+      const isRapidSecondPress =
+        previous &&
+        now - previous.time <= 320 &&
+        Math.hypot(previous.x - event.clientX, previous.y - event.clientY) <= 8;
+
+      if (
+        isRapidSecondPress &&
+        !editing &&
+        selected &&
+        selectedIds.length === 1 &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        lastPressRef.current = null;
+        event.preventDefault();
+        event.stopPropagation();
+        startEditing();
+        return;
+      }
+
+      lastPressRef.current = {
+        time: now,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      onPointerDown(event);
+    },
+    [editing, onPointerDown, selected, selectedIds.length, startEditing]
+  );
+  const handleDoubleClick = useCallback(
     (event: React.MouseEvent) => {
       if (
         editing ||
         !selected ||
         selectedIds.length !== 1 ||
-        event.detail < 2 ||
         event.shiftKey ||
         event.ctrlKey ||
         event.metaKey ||
@@ -108,7 +148,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
   };
 
   return (
-    <div style={shapeStyle} onPointerDown={handlePointerDown} onClick={handleClick}>
+    <div style={shapeStyle} onPointerDown={handlePointerDown} onDoubleClick={handleDoubleClick}>
       <div style={innerStyle}>
         {editing ? (
           <textarea
@@ -150,7 +190,7 @@ export function ShapeElementComponent({ element, selected, zoom, onPointerDown }
               whiteSpace: 'pre-wrap',
             }}
           >
-            {text || (selected ? <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Double-click</span> : null)}
+            {text || (selected ? <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Double-click to edit</span> : null)}
           </span>
         )}
       </div>

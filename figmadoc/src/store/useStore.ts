@@ -103,12 +103,34 @@ const deletePageTree = (pages: DocPage[], id: string): DocPage[] =>
     ];
   });
 
-const findFirstPageId = (pages: DocPage[]): string | null => {
-  for (const page of pages) {
-    return page.id;
-  }
+type DocsViewMode = 'single' | 'dual';
 
-  return null;
+const flattenPages = (pages: DocPage[]): DocPage[] =>
+  pages.flatMap((page) => [page, ...flattenPages(page.children ?? [])]);
+
+const normalizeDocsViewMode = (value?: string | null): DocsViewMode => (value === 'dual' ? 'dual' : 'single');
+
+const resolveDocumentPageSelection = (
+  pages: DocPage[],
+  activePageId: string | null | undefined,
+  secondaryActivePageId: string | null | undefined
+) => {
+  const pageIds = flattenPages(pages).map((page) => page.id);
+  const normalizedActivePageId =
+    activePageId && pageIds.includes(activePageId)
+      ? activePageId
+      : pageIds[0] ?? null;
+  const normalizedSecondaryActivePageId =
+    pageIds.length < 2
+      ? null
+      : secondaryActivePageId && secondaryActivePageId !== normalizedActivePageId && pageIds.includes(secondaryActivePageId)
+        ? secondaryActivePageId
+        : pageIds.find((pageId) => pageId !== normalizedActivePageId) ?? null;
+
+  return {
+    activePageId: normalizedActivePageId,
+    secondaryActivePageId: normalizedSecondaryActivePageId,
+  };
 };
 
 interface ToolDefaults {
@@ -158,11 +180,13 @@ export interface BoardSnapshot {
   elements: WhiteboardElement[];
   pages: DocPage[];
   activePageId: string | null;
+  secondaryActivePageId: string | null;
   documentTitle: string;
   theme: 'light' | 'dark';
   layoutMode: 'horizontal' | 'vertical';
   splitRatio: number;
   panelMode: 'split' | 'docs-only' | 'whiteboard-only';
+  docsViewMode: DocsViewMode;
   docsNavigatorCollapsed: boolean;
   viewState: ViewState;
 }
@@ -233,11 +257,13 @@ const makeBlankBoard = (title = 'Untitled Board'): BoardSnapshot => ({
   elements: [],
   pages: makeInitialPages(),
   activePageId: 'page-1',
+  secondaryActivePageId: null,
   documentTitle: normalizeLegacyTitle(title),
   theme: 'light',
   layoutMode: 'horizontal',
   splitRatio: 0.28,
   panelMode: 'split',
+  docsViewMode: 'single',
   docsNavigatorCollapsed: false,
   viewState: makeInitialViewState(),
 });
@@ -246,21 +272,7 @@ const normalizeSavedBoards = (boards: SavedBoard[] | undefined): SavedBoard[] =>
   (boards ?? []).map((board) => ({
     ...board,
     name: normalizeLegacyTitle(board.name),
-    cloudId: board.cloudId,
-    cloudSyncedAt: board.cloudSyncedAt,
-    snapshot: {
-      ...board.snapshot,
-      pages: normalizePages(board.snapshot.pages ?? makeInitialPages()),
-      activePageId: board.snapshot.activePageId ?? findFirstPageId(board.snapshot.pages ?? makeInitialPages()),
-      viewState: board.snapshot.viewState ?? makeInitialViewState(),
-      documentTitle: normalizeLegacyTitle(board.snapshot.documentTitle ?? board.name),
-      theme: board.snapshot.theme ?? 'light',
-      layoutMode: board.snapshot.layoutMode ?? 'horizontal',
-      splitRatio: board.snapshot.splitRatio ?? 0.28,
-      panelMode: board.snapshot.panelMode ?? 'split',
-      docsNavigatorCollapsed: board.snapshot.docsNavigatorCollapsed ?? false,
-      elements: board.snapshot.elements ?? [],
-    },
+    snapshot: normalizeBoardSnapshot(board.snapshot, board.name),
   }));
 
 const createBoardSnapshot = (state: Pick<
@@ -268,37 +280,44 @@ const createBoardSnapshot = (state: Pick<
   | 'elements'
   | 'pages'
   | 'activePageId'
+  | 'secondaryActivePageId'
   | 'documentTitle'
   | 'theme'
   | 'layoutMode'
   | 'splitRatio'
   | 'panelMode'
+  | 'docsViewMode'
   | 'docsNavigatorCollapsed'
   | 'viewState'
 >): BoardSnapshot => ({
   elements: cloneData(state.elements),
   pages: cloneData(state.pages),
   activePageId: state.activePageId,
+  secondaryActivePageId: state.secondaryActivePageId,
   documentTitle: state.documentTitle,
   theme: state.theme,
   layoutMode: state.layoutMode,
   splitRatio: state.splitRatio,
   panelMode: state.panelMode,
+  docsViewMode: state.docsViewMode,
   docsNavigatorCollapsed: state.docsNavigatorCollapsed,
   viewState: cloneData(state.viewState),
 });
 
 const normalizeBoardSnapshot = (snapshot: Partial<BoardSnapshot> | undefined, fallbackTitle = APP_NAME): BoardSnapshot => {
   const pages = normalizePages(snapshot?.pages ?? makeInitialPages());
+  const documentSelection = resolveDocumentPageSelection(pages, snapshot?.activePageId, snapshot?.secondaryActivePageId);
   return {
     elements: snapshot?.elements ?? [],
     pages,
-    activePageId: snapshot?.activePageId ?? findFirstPageId(pages),
+    activePageId: documentSelection.activePageId,
+    secondaryActivePageId: documentSelection.secondaryActivePageId,
     documentTitle: normalizeLegacyTitle(snapshot?.documentTitle ?? fallbackTitle),
     theme: snapshot?.theme ?? 'light',
     layoutMode: snapshot?.layoutMode ?? 'horizontal',
     splitRatio: snapshot?.splitRatio ?? 0.28,
     panelMode: snapshot?.panelMode ?? 'split',
+    docsViewMode: normalizeDocsViewMode(snapshot?.docsViewMode),
     docsNavigatorCollapsed: snapshot?.docsNavigatorCollapsed ?? false,
     viewState: snapshot?.viewState ?? makeInitialViewState(),
   };
@@ -308,6 +327,7 @@ interface AppStore {
   elements: WhiteboardElement[];
   pages: DocPage[];
   activePageId: string | null;
+  secondaryActivePageId: string | null;
   documentTitle: string;
   persistenceMode: PersistenceMode;
   savedBoards: SavedBoard[];
@@ -320,6 +340,7 @@ interface AppStore {
   layoutMode: 'horizontal' | 'vertical';
   splitRatio: number;
   panelMode: 'split' | 'docs-only' | 'whiteboard-only';
+  docsViewMode: DocsViewMode;
   docsNavigatorCollapsed: boolean;
   docsEditorChromeCollapsed: boolean;
   activeSurface: 'document' | 'whiteboard';
@@ -364,6 +385,7 @@ interface AppStore {
   updatePage: (id: string, updates: Partial<DocPage>) => void;
   deletePage: (id: string) => void;
   setActivePageId: (id: string) => void;
+  setSecondaryActivePageId: (id: string | null) => void;
   setDocumentTitle: (title: string) => void;
   ensureActiveBoardId: () => string;
   getCurrentBoardRecord: (name?: string) => SavedBoard;
@@ -385,6 +407,8 @@ interface AppStore {
   setLayoutMode: (mode: 'horizontal' | 'vertical') => void;
   setSplitRatio: (ratio: number) => void;
   setPanelMode: (mode: 'split' | 'docs-only' | 'whiteboard-only') => void;
+  setDocsViewMode: (mode: DocsViewMode) => void;
+  toggleDocsViewMode: () => void;
   setDocsNavigatorCollapsed: (collapsed: boolean) => void;
   toggleDocsNavigatorCollapsed: () => void;
   setDocsEditorChromeCollapsed: (collapsed: boolean) => void;
@@ -409,7 +433,8 @@ export const useStore = create<AppStore>()(
         return {
           elements: normalizedSnapshot.elements,
           pages,
-          activePageId: normalizedSnapshot.activePageId ?? findFirstPageId(pages),
+          activePageId: normalizedSnapshot.activePageId,
+          secondaryActivePageId: normalizedSnapshot.secondaryActivePageId,
           documentTitle: normalizedSnapshot.documentTitle,
           activeBoardId: boardId,
           activeCloudBoardId: cloudId,
@@ -417,6 +442,7 @@ export const useStore = create<AppStore>()(
           layoutMode: normalizedSnapshot.layoutMode,
           splitRatio: normalizedSnapshot.splitRatio,
           panelMode: normalizedSnapshot.panelMode,
+          docsViewMode: normalizedSnapshot.docsViewMode,
           docsNavigatorCollapsed: normalizedSnapshot.docsNavigatorCollapsed,
           viewState: normalizedSnapshot.viewState,
           selectedIds: [],
@@ -431,6 +457,7 @@ export const useStore = create<AppStore>()(
       elements: initialSnapshot.elements,
       pages: initialSnapshot.pages,
       activePageId: initialSnapshot.activePageId,
+      secondaryActivePageId: initialSnapshot.secondaryActivePageId,
       documentTitle: initialSnapshot.documentTitle,
       persistenceMode: 'local',
       savedBoards: [],
@@ -443,6 +470,7 @@ export const useStore = create<AppStore>()(
       layoutMode: initialSnapshot.layoutMode,
       splitRatio: initialSnapshot.splitRatio,
       panelMode: initialSnapshot.panelMode,
+      docsViewMode: initialSnapshot.docsViewMode,
       docsNavigatorCollapsed: initialSnapshot.docsNavigatorCollapsed,
       docsEditorChromeCollapsed: false,
       activeSurface: 'whiteboard',
@@ -703,20 +731,19 @@ export const useStore = create<AppStore>()(
         };
 
         set((state) => {
-          if (parentId) {
-            return {
-              pages: state.pages.map((page) =>
+          const nextPages = parentId
+            ? state.pages.map((page) =>
                 page.id === parentId
                   ? { ...page, children: [...(page.children ?? []), newPage] }
                   : page
-              ),
-              activePageId: newPage.id,
-            };
-          }
+              )
+            : [...state.pages, newPage];
+          const nextSelection = resolveDocumentPageSelection(nextPages, newPage.id, state.secondaryActivePageId);
 
           return {
-            pages: [...state.pages, newPage],
-            activePageId: newPage.id,
+            pages: nextPages,
+            activePageId: nextSelection.activePageId,
+            secondaryActivePageId: nextSelection.secondaryActivePageId,
           };
         });
       },
@@ -729,16 +756,23 @@ export const useStore = create<AppStore>()(
       deletePage: (id) =>
         set((state) => {
           const pages = deletePageTree(state.pages, id);
+          const nextSelection = resolveDocumentPageSelection(pages, state.activePageId, state.secondaryActivePageId);
+
           return {
             pages,
-            activePageId:
-              state.activePageId === id
-                ? findFirstPageId(pages)
-                : state.activePageId,
+            activePageId: nextSelection.activePageId,
+            secondaryActivePageId: nextSelection.secondaryActivePageId,
           };
         }),
 
-      setActivePageId: (id) => set({ activePageId: id }),
+      setActivePageId: (id) =>
+        set((state) => ({
+          ...resolveDocumentPageSelection(state.pages, id, state.secondaryActivePageId),
+        })),
+      setSecondaryActivePageId: (id) =>
+        set((state) => ({
+          ...resolveDocumentPageSelection(state.pages, state.activePageId, id),
+        })),
       setDocumentTitle: (documentTitle) => set({ documentTitle: normalizeLegacyTitle(documentTitle) }),
       ensureActiveBoardId: () => {
         const activeBoardId = get().activeBoardId;
@@ -815,26 +849,9 @@ export const useStore = create<AppStore>()(
         const board = get().savedBoards.find((candidate) => candidate.id === id);
         if (!board) return;
 
-        const snapshot = cloneData(board.snapshot);
-        const pages = normalizePages(snapshot.pages);
+        const snapshot = normalizeBoardSnapshot(cloneData(board.snapshot), board.name);
         set({
-          elements: snapshot.elements,
-          pages,
-          activePageId: snapshot.activePageId ?? findFirstPageId(pages),
-          documentTitle: snapshot.documentTitle,
-          activeBoardId: board.id,
-          activeCloudBoardId: board.cloudId ?? null,
-          theme: snapshot.theme,
-          layoutMode: snapshot.layoutMode,
-          splitRatio: snapshot.splitRatio,
-          panelMode: snapshot.panelMode,
-          docsNavigatorCollapsed: snapshot.docsNavigatorCollapsed,
-          viewState: snapshot.viewState,
-          selectedIds: [],
-          activeTool: 'select',
-          undoPast: [],
-          undoFuture: [],
-          clipboard: [],
+          ...buildRuntimeState(snapshot, board.id, board.cloudId ?? null),
         });
       },
       deleteBoard: (id) =>
@@ -870,43 +887,27 @@ export const useStore = create<AppStore>()(
         if (!data || typeof data !== 'object') throw new Error('Invalid file');
         const elements = Array.isArray(data.elements) ? (data.elements as WhiteboardElement[]) : [];
         const rawPages = Array.isArray(data.pages) ? (data.pages as DocPage[]) : makeInitialPages();
-        const pages = normalizePages(rawPages);
         const title = typeof data.documentTitle === 'string' ? data.documentTitle.trim() : '';
         const boardName = title || 'Imported Board';
-        const activePageId = typeof data.activePageId === 'string' ? data.activePageId : findFirstPageId(pages);
         const id = uuidv4();
-        const snapshot: BoardSnapshot = {
+        const snapshot = normalizeBoardSnapshot({
           elements,
-          pages,
-          activePageId,
+          pages: rawPages,
+          activePageId: typeof data.activePageId === 'string' ? data.activePageId : null,
+          secondaryActivePageId: typeof data.secondaryActivePageId === 'string' ? data.secondaryActivePageId : null,
           documentTitle: boardName,
           theme: (data.theme as 'light' | 'dark') ?? 'light',
           layoutMode: (data.layoutMode as 'horizontal' | 'vertical') ?? 'horizontal',
           splitRatio: typeof data.splitRatio === 'number' ? data.splitRatio : 0.28,
           panelMode: (data.panelMode as 'split' | 'docs-only' | 'whiteboard-only') ?? 'split',
+          docsViewMode: normalizeDocsViewMode(typeof data.docsViewMode === 'string' ? data.docsViewMode : null),
           docsNavigatorCollapsed: Boolean(data.docsNavigatorCollapsed),
           viewState: makeInitialViewState(),
-        };
+        }, boardName);
         const newBoard: SavedBoard = { id, name: boardName, updatedAt: new Date().toISOString(), snapshot };
         set((current) => ({
-          elements: snapshot.elements,
-          pages: snapshot.pages,
-          activePageId: snapshot.activePageId,
-          documentTitle: boardName,
-          activeBoardId: id,
-          activeCloudBoardId: null,
-          theme: snapshot.theme,
-          layoutMode: snapshot.layoutMode,
-          splitRatio: snapshot.splitRatio,
-          panelMode: snapshot.panelMode,
-          docsNavigatorCollapsed: snapshot.docsNavigatorCollapsed,
-          viewState: snapshot.viewState,
+          ...buildRuntimeState(snapshot, id, null),
           savedBoards: [newBoard, ...current.savedBoards].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
-          selectedIds: [],
-          activeTool: 'select',
-          undoPast: [],
-          undoFuture: [],
-          clipboard: [],
         }));
       },
 
@@ -1050,6 +1051,24 @@ export const useStore = create<AppStore>()(
       setLayoutMode: (layoutMode) => set({ layoutMode }),
       setSplitRatio: (splitRatio) => set({ splitRatio }),
       setPanelMode: (panelMode) => set({ panelMode }),
+      setDocsViewMode: (docsViewMode) =>
+        set((state) => {
+          const nextSelection = resolveDocumentPageSelection(state.pages, state.activePageId, state.secondaryActivePageId);
+          return {
+            docsViewMode,
+            activePageId: nextSelection.activePageId,
+            secondaryActivePageId: nextSelection.secondaryActivePageId,
+          };
+        }),
+      toggleDocsViewMode: () =>
+        set((state) => {
+          const nextSelection = resolveDocumentPageSelection(state.pages, state.activePageId, state.secondaryActivePageId);
+          return {
+            docsViewMode: state.docsViewMode === 'dual' ? 'single' : 'dual',
+            activePageId: nextSelection.activePageId,
+            secondaryActivePageId: nextSelection.secondaryActivePageId,
+          };
+        }),
       setDocsNavigatorCollapsed: (docsNavigatorCollapsed) => set({ docsNavigatorCollapsed }),
       toggleDocsNavigatorCollapsed: () =>
         set((state) => ({ docsNavigatorCollapsed: !state.docsNavigatorCollapsed })),
@@ -1072,7 +1091,7 @@ export const useStore = create<AppStore>()(
     {
       name: APP_STORAGE_KEY,
       storage: createJSONStorage(() => fallbackStorage),
-      version: 10,
+      version: 11,
       migrate: (persistedState) => {
         const state = persistedState as Partial<AppStore> | undefined;
         const localSnapshot = normalizeBoardSnapshot(
@@ -1080,11 +1099,13 @@ export const useStore = create<AppStore>()(
             elements: state?.elements,
             pages: state?.pages,
             activePageId: state?.activePageId,
+            secondaryActivePageId: state?.secondaryActivePageId,
             documentTitle: state?.documentTitle,
             theme: state?.theme,
             layoutMode: state?.layoutMode,
             splitRatio: state?.splitRatio,
             panelMode: state?.panelMode,
+            docsViewMode: state?.docsViewMode,
             docsNavigatorCollapsed: state?.docsNavigatorCollapsed,
             viewState: state?.viewState,
           },
@@ -1095,6 +1116,7 @@ export const useStore = create<AppStore>()(
           elements: localSnapshot.elements,
           pages: localSnapshot.pages,
           activePageId: localSnapshot.activePageId,
+          secondaryActivePageId: localSnapshot.secondaryActivePageId,
           documentTitle: localSnapshot.documentTitle,
           persistenceMode: state?.persistenceMode ?? 'local',
           savedBoards: normalizeSavedBoards(state?.savedBoards),
@@ -1107,6 +1129,7 @@ export const useStore = create<AppStore>()(
           layoutMode: localSnapshot.layoutMode,
           splitRatio: localSnapshot.splitRatio,
           panelMode: localSnapshot.panelMode,
+          docsViewMode: localSnapshot.docsViewMode,
           docsNavigatorCollapsed: localSnapshot.docsNavigatorCollapsed,
           docsEditorChromeCollapsed: state?.docsEditorChromeCollapsed ?? false,
           activeSurface: 'whiteboard',
@@ -1123,6 +1146,7 @@ export const useStore = create<AppStore>()(
         elements: persistedSnapshot.elements,
         pages: persistedSnapshot.pages,
         activePageId: persistedSnapshot.activePageId,
+        secondaryActivePageId: persistedSnapshot.secondaryActivePageId,
         documentTitle: persistedSnapshot.documentTitle,
         persistenceMode: state.persistenceMode,
         savedBoards: state.savedBoards,
@@ -1134,6 +1158,7 @@ export const useStore = create<AppStore>()(
         layoutMode: persistedSnapshot.layoutMode,
         splitRatio: persistedSnapshot.splitRatio,
         panelMode: persistedSnapshot.panelMode,
+        docsViewMode: persistedSnapshot.docsViewMode,
         docsNavigatorCollapsed: persistedSnapshot.docsNavigatorCollapsed,
         docsEditorChromeCollapsed: state.docsEditorChromeCollapsed,
         toolDefaults: state.toolDefaults,

@@ -103,8 +103,11 @@ export function Sidebar() {
   const {
     pages,
     activePageId,
+    secondaryActivePageId,
     panelMode,
+    docsViewMode,
     setActivePageId,
+    setSecondaryActivePageId,
     addPage,
     updatePage,
     deletePage,
@@ -112,12 +115,59 @@ export function Sidebar() {
     docsEditorChromeCollapsed,
     toggleDocsNavigatorCollapsed,
     toggleDocsEditorChromeCollapsed,
+    toggleDocsViewMode,
     setActiveSurface,
   } = useStore();
+  const [activeDocumentPane, setActiveDocumentPane] = useState<'primary' | 'secondary'>('primary');
 
   const activePage = findPage(pages, activePageId);
+  const secondaryActivePage = findPage(pages, secondaryActivePageId);
   const totalPages = countPages(pages);
   const docsOnly = panelMode === 'docs-only';
+  const dualDocsEnabled = docsOnly && docsViewMode === 'dual';
+  const pageOptions = useMemo(() => collectPageOptions(pages), [pages]);
+  const primaryPageOptions = useMemo(
+    () => pageOptions.filter((option) => option.id !== secondaryActivePageId),
+    [pageOptions, secondaryActivePageId]
+  );
+  const secondaryPageOptions = useMemo(
+    () => pageOptions.filter((option) => option.id !== activePageId),
+    [pageOptions, activePageId]
+  );
+  const highlightedPageId = dualDocsEnabled && activeDocumentPane === 'secondary'
+    ? secondaryActivePageId
+    : activePageId;
+
+  useEffect(() => {
+    if (!dualDocsEnabled) {
+      setActiveDocumentPane('primary');
+    }
+  }, [dualDocsEnabled]);
+
+  const selectDocumentPage = useCallback((pane: 'primary' | 'secondary', id: string) => {
+    setActiveDocumentPane(pane);
+
+    if (pane === 'primary') {
+      setActivePageId(id);
+      return;
+    }
+
+    if (id === activePageId && secondaryActivePageId) {
+      setActivePageId(secondaryActivePageId);
+      return;
+    }
+
+    setSecondaryActivePageId(id);
+  }, [activePageId, secondaryActivePageId, setActivePageId, setSecondaryActivePageId]);
+
+  const handleNavigatorSelect = useCallback((id: string) => {
+    selectDocumentPage(dualDocsEnabled ? activeDocumentPane : 'primary', id);
+  }, [activeDocumentPane, dualDocsEnabled, selectDocumentPage]);
+
+  const handleSwapDocuments = useCallback(() => {
+    if (!secondaryActivePageId) return;
+    setActivePageId(secondaryActivePageId);
+  }, [secondaryActivePageId, setActivePageId]);
 
   return (
     <aside
@@ -162,6 +212,28 @@ export function Sidebar() {
         </span>
 
         <div style={{ display: 'flex', gap: 4 }}>
+          {docsOnly && (
+            <button
+              onClick={toggleDocsViewMode}
+              style={{
+                height: 24,
+                padding: '0 10px',
+                borderRadius: 999,
+                border: `1px solid ${docsOnly ? 'var(--doc-border)' : 'var(--border-color)'}`,
+                background: docsViewMode === 'dual' ? 'var(--doc-surface)' : 'transparent',
+                color: docsOnly ? 'var(--doc-ink)' : 'var(--text-primary)',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {docsViewMode === 'dual' ? 'Single doc' : 'Two docs'}
+            </button>
+          )}
+          {dualDocsEnabled && secondaryActivePageId && (
+            <SmallBtn icon="swap_horiz" title="Swap documents" onClick={handleSwapDocuments} />
+          )}
           <SmallBtn icon="add" title="New page" onClick={() => addPage()} />
           <SmallBtn
             icon={docsEditorChromeCollapsed ? 'fullscreen' : 'fullscreen_exit'}
@@ -227,8 +299,8 @@ export function Sidebar() {
               <NavNode
                 key={page.id}
                 page={page}
-                activePageId={activePageId}
-                onSelect={setActivePageId}
+                activePageId={highlightedPageId}
+                onSelect={handleNavigatorSelect}
                 onDelete={deletePage}
                 onAddChild={(id) => addPage(id)}
                 depth={0}
@@ -239,11 +311,70 @@ export function Sidebar() {
       )}
 
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {activePage ? (
+        {dualDocsEnabled ? (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+              gap: 16,
+              padding: 16,
+              overflow: 'hidden',
+            }}
+          >
+            <DualDocumentPane
+              label="Left document"
+              pageId={activePageId}
+              pageOptions={primaryPageOptions}
+              isActive={activeDocumentPane === 'primary'}
+              onActivate={() => setActiveDocumentPane('primary')}
+              onSelectPage={(id) => selectDocumentPage('primary', id)}
+              onAddPage={() => addPage()}
+            >
+              {activePage ? (
+                <PageEditor
+                  key={`primary-${activePage.id}`}
+                  page={activePage}
+                  fullDocumentMode={true}
+                  documentLayout="dual"
+                  chromeCollapsed={docsEditorChromeCollapsed}
+                  onToggleChrome={toggleDocsEditorChromeCollapsed}
+                  onTitleChange={(title) => updatePage(activePage.id, { title })}
+                  onUpdate={(content, contentJson) => updatePage(activePage.id, { content, contentJson })}
+                />
+              ) : null}
+            </DualDocumentPane>
+
+            <DualDocumentPane
+              label="Right document"
+              pageId={secondaryActivePageId}
+              pageOptions={secondaryPageOptions}
+              isActive={activeDocumentPane === 'secondary'}
+              onActivate={() => setActiveDocumentPane('secondary')}
+              onSelectPage={(id) => selectDocumentPage('secondary', id)}
+              onAddPage={() => addPage()}
+            >
+              {secondaryActivePage ? (
+                <PageEditor
+                  key={`secondary-${secondaryActivePage.id}`}
+                  page={secondaryActivePage}
+                  fullDocumentMode={true}
+                  documentLayout="dual"
+                  chromeCollapsed={docsEditorChromeCollapsed}
+                  onToggleChrome={toggleDocsEditorChromeCollapsed}
+                  onTitleChange={(title) => updatePage(secondaryActivePage.id, { title })}
+                  onUpdate={(content, contentJson) => updatePage(secondaryActivePage.id, { content, contentJson })}
+                />
+              ) : null}
+            </DualDocumentPane>
+          </div>
+        ) : activePage ? (
           <PageEditor
             key={activePage.id}
             page={activePage}
             fullDocumentMode={docsOnly}
+            documentLayout="single"
             chromeCollapsed={docsEditorChromeCollapsed}
             onToggleChrome={toggleDocsEditorChromeCollapsed}
             onTitleChange={(title) => updatePage(activePage.id, { title })}
@@ -265,6 +396,138 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+  );
+}
+
+function DualDocumentPane({
+  label,
+  pageId,
+  pageOptions,
+  isActive,
+  onActivate,
+  onSelectPage,
+  onAddPage,
+  children,
+}: {
+  label: string;
+  pageId: string | null;
+  pageOptions: Array<{ id: string; label: string }>;
+  isActive: boolean;
+  onActivate: () => void;
+  onSelectPage: (id: string) => void;
+  onAddPage: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      onPointerDownCapture={onActivate}
+      onFocusCapture={onActivate}
+      style={{
+        minWidth: 0,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        borderRadius: 30,
+        border: `1px solid ${isActive ? 'color-mix(in srgb, var(--primary) 32%, var(--doc-border))' : 'var(--doc-border)'}`,
+        background: 'color-mix(in srgb, var(--doc-toolbar-bg) 88%, transparent)',
+        boxShadow: isActive ? '0 18px 48px rgba(15, 23, 42, 0.12)' : '0 10px 30px rgba(15, 23, 42, 0.08)',
+      }}
+    >
+      <div
+        style={{
+          padding: '10px 12px',
+          borderBottom: '1px solid var(--doc-border)',
+          display: 'grid',
+          gap: 8,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--doc-ink-soft)',
+              }}
+            >
+              {label}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--doc-ink-soft)' }}>
+              {isActive ? 'Navigator targets this document' : 'Click to target this document'}
+            </div>
+          </div>
+
+          <select
+            value={pageId ?? ''}
+            onFocus={onActivate}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (!value) return;
+              onSelectPage(value);
+            }}
+            disabled={pageOptions.length === 0}
+            style={{
+              ...getControlStyle('doc'),
+              minWidth: 180,
+              maxWidth: '100%',
+            }}
+          >
+            <option value="">
+              {pageOptions.length === 0 ? 'No page available' : 'Select page'}
+            </option>
+            {pageOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {pageId && children ? (
+          children
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: 'grid',
+              placeItems: 'center',
+              padding: 24,
+              background: 'var(--doc-canvas-bg)',
+            }}
+          >
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'center', textAlign: 'center', maxWidth: 280 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--doc-ink)' }}>Open another page side by side</div>
+              <div style={{ fontSize: 13, color: 'var(--doc-ink-soft)' }}>
+                Create a second page or choose one from the navigator to compare documents at the same time.
+              </div>
+              <button
+                onClick={onAddPage}
+                style={{
+                  height: 34,
+                  padding: '0 14px',
+                  borderRadius: 999,
+                  border: '1px solid var(--doc-border)',
+                  background: 'var(--doc-surface)',
+                  color: 'var(--doc-ink)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                New page
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -366,6 +629,7 @@ function NavNode({
 function PageEditor({
   page,
   fullDocumentMode,
+  documentLayout = 'single',
   chromeCollapsed,
   onToggleChrome,
   onTitleChange,
@@ -373,6 +637,7 @@ function PageEditor({
 }: {
   page: DocPage;
   fullDocumentMode: boolean;
+  documentLayout?: 'single' | 'dual';
   chromeCollapsed: boolean;
   onToggleChrome: () => void;
   onTitleChange: (title: string) => void;
@@ -467,12 +732,17 @@ function PageEditor({
   const shellTextSoft = fullDocumentMode ? 'var(--doc-ink-soft)' : 'var(--text-secondary)';
   const shellMuted = fullDocumentMode ? 'var(--doc-ink-soft)' : 'var(--text-muted)';
   const chromeSurface = fullDocumentMode ? 'var(--doc-toolbar-bg)' : 'var(--glass-bg)';
-  const showTopChrome = !chromeCollapsed && !fullDocumentMode;
-  const showSideChrome = !chromeCollapsed && fullDocumentMode;
+  const compactDocumentMode = fullDocumentMode && documentLayout === 'dual';
+  const showTopChrome = !chromeCollapsed && (!fullDocumentMode || compactDocumentMode);
+  const showSideChrome = !chromeCollapsed && fullDocumentMode && !compactDocumentMode;
   const scrollPadding = fullDocumentMode
-    ? chromeCollapsed
-      ? '18px 20px 48px'
-      : '18px 20px 56px'
+    ? compactDocumentMode
+      ? chromeCollapsed
+        ? '12px 14px 24px'
+        : '12px 14px 28px'
+      : chromeCollapsed
+        ? '18px 20px 48px'
+        : '18px 20px 56px'
     : chromeCollapsed
       ? '10px 16px 24px'
       : '12px 16px 32px';
@@ -652,16 +922,16 @@ function PageEditor({
 
         <div
           style={{
-            maxWidth: fullDocumentMode ? 1320 : 'none',
-            margin: fullDocumentMode ? '0 auto' : 0,
-            display: fullDocumentMode ? 'grid' : 'block',
-            gridTemplateColumns: fullDocumentMode
+            maxWidth: fullDocumentMode && !compactDocumentMode ? 1320 : 'none',
+            margin: fullDocumentMode && !compactDocumentMode ? '0 auto' : 0,
+            display: fullDocumentMode && !compactDocumentMode ? 'grid' : 'block',
+            gridTemplateColumns: fullDocumentMode && !compactDocumentMode
               ? showSideChrome
                 ? '260px minmax(0, 1fr)'
                 : 'minmax(0, 1fr)'
               : undefined,
-            gap: fullDocumentMode ? 20 : 0,
-            alignItems: fullDocumentMode ? 'start' : undefined,
+            gap: fullDocumentMode && !compactDocumentMode ? 20 : 0,
+            alignItems: fullDocumentMode && !compactDocumentMode ? 'start' : undefined,
           }}
         >
           {showSideChrome && editor && (
@@ -674,7 +944,7 @@ function PageEditor({
           )}
 
           <div style={{ minWidth: 0 }}>
-            {fullDocumentMode && (
+            {fullDocumentMode && !compactDocumentMode && (
               <div
                 style={{
                   display: 'flex',
@@ -1321,6 +1591,17 @@ function findPage(pages: DocPage[], id: string | null): DocPage | null {
 
 function countPages(pages: DocPage[]): number {
   return pages.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0);
+}
+
+function collectPageOptions(pages: DocPage[], parentTitles: string[] = []): Array<{ id: string; label: string }> {
+  return pages.flatMap((page) => {
+    const title = page.title.trim() || 'Untitled';
+    const trail = [...parentTitles, title];
+    return [
+      { id: page.id, label: trail.join(' / ') },
+      ...collectPageOptions(page.children ?? [], trail),
+    ];
+  });
 }
 
 function normalizeColorInputValue(value: string | undefined) {

@@ -665,10 +665,12 @@ function BoardManager({
       elements: state.elements,
       pages: state.pages,
       activePageId: state.activePageId,
+      secondaryActivePageId: state.secondaryActivePageId,
       theme: state.theme,
       layoutMode: state.layoutMode,
       splitRatio: state.splitRatio,
       panelMode: state.panelMode,
+      docsViewMode: state.docsViewMode,
       docsNavigatorCollapsed: state.docsNavigatorCollapsed,
       exportedAt: new Date().toISOString(),
     };

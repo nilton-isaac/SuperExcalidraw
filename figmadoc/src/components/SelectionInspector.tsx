@@ -1,5 +1,5 @@
+import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { insertArrowMidPoint } from '../lib/arrows';
 import { useStore } from '../store/useStore';
 import type {
   ArrowElement,
@@ -27,10 +27,14 @@ export function SelectionInspector() {
     activeTool,
     toolDefaults,
     updateElement,
+    updateElements,
     updateToolDefaults,
+    historyPush,
     bringSelectionToFront,
     sendSelectionToBack,
   } = useStore();
+  const [flowLayoutBusy, setFlowLayoutBusy] = useState<null | 'RIGHT' | 'DOWN'>(null);
+  const [flowLayoutMessage, setFlowLayoutMessage] = useState<string | null>(null);
 
   if (selectedIds.length === 0) {
     if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'diamond') {
@@ -210,6 +214,28 @@ export function SelectionInspector() {
           Styling is available for one element at a time. Select a single item to change its
           colors, typography, and orientation.
         </div>
+        <FlowLayoutControls
+          busyDirection={flowLayoutBusy}
+          message={flowLayoutMessage}
+          onRun={async (direction) => {
+            setFlowLayoutBusy(direction);
+            setFlowLayoutMessage(null);
+            try {
+              const result = await runFlowAutoLayout({
+                elements,
+                selectedIds,
+                direction,
+                historyPush,
+                updateElements,
+              });
+              setFlowLayoutMessage(result.message);
+            } catch {
+              setFlowLayoutMessage('Flow layout failed. Try again with connected blocks selected.');
+            } finally {
+              setFlowLayoutBusy(null);
+            }
+          }}
+        />
         <LayerActions
           onBringToFront={bringSelectionToFront}
           onSendToBack={sendSelectionToBack}
@@ -305,6 +331,7 @@ function ShapeInspector({
         value={element.rotation ?? 0}
         onChange={(value) => updateElement(element.id, { rotation: value })}
       />
+      <TextInteractionHint />
     </>
   );
 }
@@ -340,6 +367,7 @@ function StickyInspector({
         value={element.rotation ?? 0}
         onChange={(value) => updateElement(element.id, { rotation: value })}
       />
+      <TextInteractionHint />
     </>
   );
 }
@@ -369,6 +397,7 @@ function TextInspector({
         value={element.rotation ?? 0}
         onChange={(value) => updateElement(element.id, { rotation: value })}
       />
+      <TextInteractionHint />
     </>
   );
 }
@@ -437,32 +466,7 @@ function ArrowInspector({
         value={element.properties.curveOffset ?? 36}
         onChange={(value) => patchProperties(element, updateElement, { curveOffset: value })}
       />
-      <FieldLabel>Path Edit</FieldLabel>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
-        <button
-          onClick={() =>
-            patchProperties(element, updateElement, {
-              points: insertArrowMidPoint({
-                points: element.properties.points,
-                lineStyle: element.properties.lineStyle ?? 'straight',
-              }),
-            })
-          }
-          style={secondaryActionStyle}
-        >
-          Add Bend
-        </button>
-        <button
-          onClick={() =>
-            patchProperties(element, updateElement, {
-              points: [element.properties.points[0], element.properties.points[element.properties.points.length - 1]],
-            })
-          }
-          style={secondaryActionStyle}
-        >
-          Reset
-        </button>
-      </div>
+      <InfoHint>Arrows stay attached to objects and auto-route in a flowchart style as elements move.</InfoHint>
     </>
   );
 }
@@ -679,6 +683,90 @@ function RotationField({
         onChange={(event) => onChange(Number(event.target.value))}
         style={{ width: '100%', accentColor: 'var(--primary)' }}
       />
+    </>
+  );
+}
+
+function TextInteractionHint() {
+  return (
+    <div
+      style={{
+        padding: '10px 12px',
+        borderRadius: 12,
+        border: '1px solid var(--glass-border)',
+        background: 'color-mix(in srgb, var(--glass-bg) 88%, white)',
+        color: 'var(--text-secondary)',
+        fontSize: 11,
+        lineHeight: 1.6,
+      }}
+    >
+      Drag to move. Double-click quickly to edit the text.
+    </div>
+  );
+}
+
+function InfoHint({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: '10px 12px',
+        borderRadius: 12,
+        border: '1px solid var(--glass-border)',
+        background: 'color-mix(in srgb, var(--glass-bg) 88%, white)',
+        color: 'var(--text-secondary)',
+        fontSize: 11,
+        lineHeight: 1.6,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function FlowLayoutControls({
+  busyDirection,
+  message,
+  onRun,
+}: {
+  busyDirection: null | 'RIGHT' | 'DOWN';
+  message: string | null;
+  onRun: (direction: 'RIGHT' | 'DOWN') => Promise<void>;
+}) {
+  return (
+    <>
+      <FieldLabel>Flowchart</FieldLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+        <button
+          onClick={() => void onRun('RIGHT')}
+          disabled={busyDirection !== null}
+          style={{
+            ...secondaryActionStyle,
+            opacity: busyDirection && busyDirection !== 'RIGHT' ? 0.72 : 1,
+            cursor: busyDirection ? 'default' : 'pointer',
+          }}
+        >
+          {busyDirection === 'RIGHT' ? 'Laying out...' : 'Left to Right'}
+        </button>
+        <button
+          onClick={() => void onRun('DOWN')}
+          disabled={busyDirection !== null}
+          style={{
+            ...secondaryActionStyle,
+            opacity: busyDirection && busyDirection !== 'DOWN' ? 0.72 : 1,
+            cursor: busyDirection ? 'default' : 'pointer',
+          }}
+        >
+          {busyDirection === 'DOWN' ? 'Laying out...' : 'Top to Bottom'}
+        </button>
+      </div>
+      <InfoHint>
+        Select connected blocks and run auto layout to reorganize the flow and reroute linked arrows.
+      </InfoHint>
+      {message && (
+        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          {message}
+        </div>
+      )}
     </>
   );
 }
@@ -942,6 +1030,188 @@ function patchProperties<T extends WhiteboardElement>(
 
 function normalizeColor(value: string) {
   return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#000000';
+}
+
+let elkConstructorPromise: Promise<any> | null = null;
+
+async function getElkConstructor() {
+  if (!elkConstructorPromise) {
+    elkConstructorPromise = import('elkjs/lib/elk.bundled.js').then((module) => module.default);
+  }
+  return elkConstructorPromise;
+}
+
+async function runFlowAutoLayout({
+  elements,
+  selectedIds,
+  direction,
+  historyPush,
+  updateElements,
+}: {
+  elements: WhiteboardElement[];
+  selectedIds: string[];
+  direction: 'RIGHT' | 'DOWN';
+  historyPush: () => void;
+  updateElements: (updates: Array<{ id: string; updates: Partial<WhiteboardElement> }>) => void;
+}) {
+  const selection = collectFlowLayoutSelection(elements, selectedIds);
+  if (selection.nodes.length < 2) {
+    return { message: 'Select at least two connected blocks to run flow layout.' };
+  }
+
+  const ELK = await getElkConstructor();
+  const elk = new ELK();
+  const graph = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': direction,
+      'elk.edgeRouting': 'ORTHOGONAL',
+      'elk.layered.nodePlacement.favorStraightEdges': 'true',
+      'elk.layered.considerModelOrder': 'NODES_AND_EDGES',
+      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+      'elk.spacing.nodeNode': '36',
+      'elk.spacing.edgeNode': '28',
+      'elk.spacing.edgeEdge': '16',
+      'elk.layered.spacing.nodeNodeBetweenLayers': '84',
+      'elk.padding': '[top=24,left=24,bottom=24,right=24]',
+    },
+    children: selection.nodes.map((node) => ({
+      id: node.id,
+      width: Math.max(60, node.width),
+      height: Math.max(40, node.height),
+    })),
+    edges: selection.arrows.map((arrow) => ({
+      id: arrow.id,
+      sources: [arrow.properties.startElementId!],
+      targets: [arrow.properties.endElementId!],
+    })),
+  };
+
+  const layout = await elk.layout(graph);
+  const layoutChildren = Array.isArray(layout.children) ? layout.children : [];
+  if (layoutChildren.length === 0) {
+    return { message: 'Nothing to layout for the current selection.' };
+  }
+
+  const currentBounds = getLayoutBounds(selection.nodes.map((node) => ({
+    x: node.x,
+    y: node.y,
+    width: node.width,
+    height: node.height,
+  })));
+  const nextBounds = getLayoutBounds(layoutChildren.map((node: any) => ({
+    x: node.x ?? 0,
+    y: node.y ?? 0,
+    width: node.width ?? 0,
+    height: node.height ?? 0,
+  })));
+  const offsetX = currentBounds.centerX - nextBounds.centerX;
+  const offsetY = currentBounds.centerY - nextBounds.centerY;
+
+  const updates: Array<{ id: string; updates: Partial<WhiteboardElement> }> = [];
+  for (const child of layoutChildren) {
+    updates.push({
+      id: child.id,
+      updates: {
+        x: Math.round((child.x ?? 0) + offsetX),
+        y: Math.round((child.y ?? 0) + offsetY),
+      },
+    });
+  }
+
+  const edgeMap = new Map<string, any>(
+    (Array.isArray(layout.edges) ? layout.edges : []).map((edge: any) => [edge.id, edge] as const)
+  );
+
+  for (const arrow of selection.arrows) {
+    const layoutEdge = edgeMap.get(arrow.id);
+    const section = layoutEdge?.sections?.[0];
+    const nextPoints = section
+      ? [
+          section.startPoint,
+          ...(section.bendPoints ?? []),
+          section.endPoint,
+        ].map((point: { x: number; y: number }) => ({
+          x: Math.round(point.x + offsetX),
+          y: Math.round(point.y + offsetY),
+        }))
+      : arrow.properties.points;
+
+    updates.push({
+      id: arrow.id,
+      updates: {
+        properties: {
+          ...arrow.properties,
+          points: nextPoints,
+          lineStyle: 'orthogonal',
+        },
+      } as Partial<WhiteboardElement>,
+    });
+  }
+
+  historyPush();
+  updateElements(updates);
+
+  return {
+    message: `Flow layout applied to ${selection.nodes.length} block${selection.nodes.length === 1 ? '' : 's'} and ${selection.arrows.length} arrow${selection.arrows.length === 1 ? '' : 's'}.`,
+  };
+}
+
+function collectFlowLayoutSelection(elements: WhiteboardElement[], selectedIds: string[]) {
+  const selectedSet = new Set(selectedIds);
+  const nodeIds = new Set(
+    elements
+      .filter((element) => selectedSet.has(element.id) && isFlowNode(element))
+      .map((element) => element.id)
+  );
+
+  for (const element of elements) {
+    if (
+      element.type === 'arrow' &&
+      selectedSet.has(element.id) &&
+      element.properties.startElementId &&
+      element.properties.endElementId &&
+      element.properties.startElementId !== element.properties.endElementId
+    ) {
+      nodeIds.add(element.properties.startElementId);
+      nodeIds.add(element.properties.endElementId);
+    }
+  }
+
+  const nodes = elements.filter((element): element is Exclude<WhiteboardElement, ArrowElement | PenElement> =>
+    nodeIds.has(element.id) && isFlowNode(element)
+  );
+  const arrows = elements.filter((element): element is ArrowElement =>
+    element.type === 'arrow' &&
+    Boolean(element.properties.startElementId) &&
+    Boolean(element.properties.endElementId) &&
+    element.properties.startElementId !== element.properties.endElementId &&
+    nodeIds.has(element.properties.startElementId!) &&
+    nodeIds.has(element.properties.endElementId!)
+  );
+
+  return { nodes, arrows };
+}
+
+function isFlowNode(element: WhiteboardElement): boolean {
+  return element.type !== 'arrow' && element.type !== 'pen';
+}
+
+function getLayoutBounds(nodes: Array<{ x: number; y: number; width: number; height: number }>) {
+  const left = Math.min(...nodes.map((node) => node.x));
+  const top = Math.min(...nodes.map((node) => node.y));
+  const right = Math.max(...nodes.map((node) => node.x + node.width));
+  const bottom = Math.max(...nodes.map((node) => node.y + node.height));
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2,
+  };
 }
 
 function iconForElement(element: WhiteboardElement) {
